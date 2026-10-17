@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -46,6 +47,10 @@ def get(path: str, **params) -> dict:
             with urllib.request.urlopen(request, timeout=8) as response:
                 return json.load(response)
         except urllib.error.HTTPError as error:
+            # the relay's own hiccups are 5xx, worth another try
+            if error.code >= 500 and attempt < 2:
+                time.sleep(1 + attempt)
+                continue
             detail = error.read().decode(errors="replace")[:200]
             raise ApiError(f"{error.code} on {path}: {detail}") from error
         except (urllib.error.URLError, http.client.IncompleteRead, TimeoutError) as error:

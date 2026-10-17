@@ -120,9 +120,20 @@ def main() -> None:
     rep = sub.add_parser("replay", help="run a screen recording through the helper")
     rep.add_argument("video", type=Path)
     rep.add_argument("--panel", action="store_true", help="show the panel at real speed instead of printing")
+    sub.add_parser("deck", help="suggest a deck from your cards")
     args = parser.parse_args()
     if args.command == "record":
         record(args.out, args.fps)
+    elif args.command == "deck":
+        from clash_helper import api, deck
+
+        tag = api.setting("CR_PLAYER_TAG")
+        if not tag or not api.token():
+            raise SystemExit("set CR_API_TOKEN and CR_PLAYER_TAG in .env first")
+        try:
+            deck.suggest(tag)
+        except api.ApiError as error:
+            raise SystemExit(f"Clash Royale API: {error}") from None
     elif args.command == "replay" and not args.panel:
         replay(args.video, args.fps)
     else:

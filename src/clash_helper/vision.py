@@ -8,6 +8,8 @@ import numpy as np
 # arena rows between the enemy king tower top and the hand panel
 ARENA_TOP, ARENA_BOTTOM = 190, 1180
 RIVER_Y = 640
+# enemy tower sprites, their cream and red trim reads like a badge
+ENEMY_TOWERS = [(95, 290, 185, 400), (480, 290, 570, 400), (270, 190, 395, 330)]
 # elixir bar, filled segments are solid magenta
 BAR_Y0, BAR_Y1 = 1372, 1388
 BAR_EMPTY_X, BAR_FULL_X = 180, 640
@@ -87,25 +89,31 @@ def deploy_clocks(frame: np.ndarray) -> list[tuple[int, int]]:
     return found
 
 
-def level_badges(frame: np.ndarray, enemy: bool) -> list[tuple[int, int]]:
-    """Centers of unit level badges, crimson for the enemy and blue for the player."""
+def level_badges(frame: np.ndarray, enemy: bool) -> list[tuple[int, int, int]]:
+    """Unit level badges as center x, y and number width, a white or gold number in a crimson (enemy) or blue frame."""
     hsv = _hsv(frame[ARENA_TOP:ARENA_BOTTOM])
     h, s, v = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+    digits = ((v > 200) & ((s < 70) | ((h >= 18) & (h <= 35) & (s > 100)))).astype(np.uint8)
+    # join the two digits of levels 10 and up into one blob
+    digits = cv2.dilate(digits, np.ones((3, 5), np.uint8))
     if enemy:
-        mask = ((h >= 165) | (h <= 3)) & (s > 150) & (v > 110)
+        frame_color = (((h >= 165) | (h <= 3)) & (s > 100) & (v > 90)).astype(np.uint8)
     else:
-        mask = (h >= 100) & (h <= 115) & (s > 170) & (v > 150)
-    mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
-    # the level digit is white or gold, tower trim of the same red has none
-    digit = (v > 200) & ((s < 90) | ((h >= 18) & (h <= 35)))
-    count, _, stats, centers = cv2.connectedComponentsWithStats(mask)
+        frame_color = ((h >= 98) & (h <= 118) & (s > 150) & (v > 120)).astype(np.uint8)
+    count, _, stats, centers = cv2.connectedComponentsWithStats(digits)
     found = []
     for i in range(1, count):
         x, y, w, hgt, area = stats[i]
-        # badges are small near-square blocks, health bars are long and thin
-        if not (12 <= w <= 34 and 14 <= hgt <= 34 and 0.6 <= w / hgt <= 1.6 and area >= 0.3 * w * hgt):
+        if not (8 <= w <= 34 and 10 <= hgt <= 28):
             continue
-        if digit[y : y + hgt, x : x + w].mean() < 0.12:
+        x0, y0 = max(0, x - 4), max(0, y - 4)
+        x1, y1 = min(digits.shape[1], x + w + 4), min(digits.shape[0], y + hgt + 4)
+        box = frame_color[y0:y1, x0:x1]
+        inner = frame_color[y:y + hgt, x:x + w]
+        ring = (box.sum() - inner.sum()) / max(1, box.size - inner.size)
+        cx, cy = int(centers[i][0]), int(centers[i][1]) + ARENA_TOP
+        if enemy and any(x0 <= cx <= x1 and y0 <= cy <= y1 for x0, y0, x1, y1 in ENEMY_TOWERS):
             continue
-        found.append((int(centers[i][0]), int(centers[i][1]) + ARENA_TOP))
+        if ring > 0.35:
+            found.append((cx, cy, int(w)))
     return found

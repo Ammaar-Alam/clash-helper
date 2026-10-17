@@ -15,10 +15,12 @@ from clash_helper.hand import HandReader
 from clash_helper.identify import Detector, name_deploy
 from clash_helper.tracker import UNKNOWN, Opponent
 
-VOTE_FRAMES = 8  # frames after a deploy timer that vote on the unit
+VOTE_FRAMES = 8  # frames after a deploy timer that count badges
+SPAWN_FRAMES = 5  # of those, frames where the new unit is still on its timer
 CLOCK_MERGE = 70  # px, one deploy timer seen over several frames
 CLOCK_SECONDS = 1.6
 MATCH_GONE_SECONDS = 3.0
+WIDE_BADGE = 18  # px, a level of 10 or more
 LOOKUP_EVERY = 1.0  # seconds between name reads while the intro fades
 LOOKUP_WINDOW = 25.0
 
@@ -32,11 +34,21 @@ class Pending:
     votes: Counter = field(default_factory=Counter)
     frames: int = 0
     counts: list[int] = field(default_factory=list)
+    widths: list[int] = field(default_factory=list)
 
     @property
     def units(self) -> int:
-        """Typical badge count around the landing spot, robust to passers-by."""
-        return sorted(self.counts)[len(self.counts) // 2] if self.counts else 0
+        """Badge count around the landing spot once everything dropped in, robust to passers-by."""
+        if not self.counts:
+            return 0
+        return sorted(self.counts)[int(0.75 * (len(self.counts) - 1))]
+
+    @property
+    def digits(self) -> int | None:
+        """How many digits the units' level has, a two digit badge is clearly wider."""
+        if not self.widths:
+            return None
+        return 2 if max(self.widths) >= WIDE_BADGE else 1
 
 
 @dataclass
@@ -80,6 +92,7 @@ class Match:
         self.answered = True
         self.my_elixir = 5
         self.lookup_state = "todo"  # todo, running, done
+        self.levels: dict[str, int] = {}
         self.last_ocr = -10.0
         self.my_hand: list = [None] * 4
         self.next_mine: str | None = None
@@ -111,6 +124,8 @@ class Match:
                 found = None
             if found and found.get("currentDeck"):
                 self.opp.preload([c["name"] for c in found["currentDeck"]])
+                # the badge shows the level counted from 16 down for every rarity
+                self.levels = {c["name"]: c["level"] + 16 - c["maxLevel"] for c in found["currentDeck"]}
                 print(f"opponent deck: {', '.join(self.opp.deck)}", flush=True)
             self.lookup_state = "done"
 
@@ -162,23 +177,27 @@ class Match:
             p.frames += 1
             if p.frames >= 2:
                 # the units need a moment to drop in and show their badges
-                p.counts.append(sum(1 for bx, by in badges if abs(bx - p.x) < 75 and -90 < by - p.y < 60))
+                near = [w for bx, by, w in badges if abs(bx - p.x) < 75 and -90 < by - p.y < 60]
+                p.counts.append(len(near))
+                p.widths += near
             for name, conf, x, top, bottom in units:
-                if not (abs(x - p.x) < 90 and -60 < bottom - p.y < 110):
+                # a fresh unit stands on its deploy timer, older units nearby have walked off it
+                if p.frames > SPAWN_FRAMES or not (abs(x - p.x) < 50 and -30 < bottom - p.y < 80):
                     continue
                 # enemy units wear their crimson level badge just above the head
-                if any(abs(bx - x) < 40 and top - 45 < by < top + 35 for bx, by in badges):
+                if any(abs(bx - x) < 40 and top - 45 < by < top + 35 for bx, by, _ in badges):
                     p.votes[name] += conf
         for p in [p for p in self.pending if p.frames >= VOTE_FRAMES]:
             self.pending.remove(p)
             self._land(p)
 
     def _land(self, p: Pending) -> None:
-        candidates = None
-        if self.opp.deck_complete:
-            # a card still waiting in their queue cannot have been played
-            candidates = [c for c in self.opp.deck if c not in self.opp.queue]
-        name = name_deploy(p.votes, candidates, p.units) or UNKNOWN
+        candidates = self.opp.deck if self.opp.deck_complete else None
+        # a card waiting in their queue cannot be played, unless an earlier name was wrong
+        unlikely = set(self.opp.queue)
+        if p.digits and self.levels:
+            unlikely |= {n for n, level in self.levels.items() if len(str(level)) != p.digits}
+        name = name_deploy(p.votes, candidates, p.units, unlikely) or UNKNOWN
         self.debug.append((p, dict(p.votes), name))
         played = card(name) if name != UNKNOWN else None
         cost = played.cost if played else 3

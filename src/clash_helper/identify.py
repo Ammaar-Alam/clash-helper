@@ -71,7 +71,9 @@ def unit_cards() -> dict[str, list[str]]:
     return mapping
 
 
-def name_deploy(votes: Counter, candidates: list[str] | None, units_seen: int) -> str | None:
+def name_deploy(
+    votes: Counter, candidates: list[str] | None, units_seen: int, unlikely: set[str] = frozenset()
+) -> str | None:
     """Most likely card for one deploy, None when nothing points anywhere."""
     pool = candidates if candidates is not None else list(all_cards())
     scores: Counter = Counter()
@@ -85,6 +87,9 @@ def name_deploy(votes: Counter, candidates: list[str] | None, units_seen: int) -
         for name in pool:
             if card(name).count == units_seen:
                 scores[name] += 1.5
+    for name in unlikely:
+        if name in scores:
+            scores[name] *= 0.35
     if not scores:
         return None
     best = scores.most_common(2)
