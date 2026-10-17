@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clash-helper"
+version = "0.1.0"
+description = "Live Clash Royale coaching from your iPhone Mirroring window."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=2.0",
+  "onnxruntime>=1.18",
+  "opencv-python>=4.10",
+  "pyobjc-framework-Quartz>=10.0",
+  "pyobjc-framework-Cocoa>=10.0",
+  "pyobjc-framework-Vision>=10.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2"]
+
+[project.scripts]
+clash-helper = "clash_helper.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+clash_helper = ["data/*.json", "data/cards/*.png"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

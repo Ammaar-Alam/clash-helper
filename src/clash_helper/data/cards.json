@@ -1,0 +1,962 @@
+[
+ {
+  "name": "Archer Queen",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Champion",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Archers",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Arrows",
+  "cost": 3,
+  "type": "spell",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Baby Dragon",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Balloon",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Bandit",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Barbarian Barrel",
+  "cost": 2,
+  "type": "spell",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Barbarian Hut",
+  "cost": 6,
+  "type": "building",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Barbarians",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Bats",
+  "cost": 2,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Battle Healer",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Battle Ram",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Bomb Tower",
+  "cost": 4,
+  "type": "building",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Bomber",
+  "cost": 2,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Bowler",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Cannon",
+  "cost": 3,
+  "type": "building",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Cannon Cart",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Clone",
+  "cost": 3,
+  "type": "spell",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Dark Prince",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Dart Goblin",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Earthquake",
+  "cost": 3,
+  "type": "spell",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Electro Dragon",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Electro Giant",
+  "cost": 7,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Electro Spirit",
+  "cost": 1,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Electro Wizard",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Elite Barbarians",
+  "cost": 6,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Elixir Collector",
+  "cost": 6,
+  "type": "building",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Elixir Golem",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Executioner",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Fire Spirit",
+  "cost": 1,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Fireball",
+  "cost": 4,
+  "type": "spell",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Firecracker",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Fisherman",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Flying Machine",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Freeze",
+  "cost": 4,
+  "type": "spell",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Furnace",
+  "cost": 4,
+  "type": "building",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Giant",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Giant Skeleton",
+  "cost": 6,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Giant Snowball",
+  "cost": 2,
+  "type": "spell",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Goblin Barrel",
+  "cost": 3,
+  "type": "spell",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Goblin Cage",
+  "cost": 4,
+  "type": "building",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Goblin Drill",
+  "cost": 4,
+  "type": "building",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Goblin Gang",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Goblin Giant",
+  "cost": 6,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Goblin Hut",
+  "cost": 5,
+  "type": "building",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Goblins",
+  "cost": 2,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Golden Knight",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Champion",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Golem",
+  "cost": 8,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Graveyard",
+  "cost": 5,
+  "type": "spell",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Guards",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Heal Spirit",
+  "cost": 1,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Hog Rider",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Hunter",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Ice Golem",
+  "cost": 2,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Ice Spirit",
+  "cost": 1,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Ice Wizard",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Inferno Dragon",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Inferno Tower",
+  "cost": 5,
+  "type": "building",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Knight",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Lava Hound",
+  "cost": 7,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Lightning",
+  "cost": 6,
+  "type": "spell",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Lumberjack",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Magic Archer",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Mega Knight",
+  "cost": 7,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Mega Minion",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Mighty Miner",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Champion",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Miner",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Mini P.E.K.K.A",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Minion Horde",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Minions",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Mirror",
+  "cost": 1,
+  "type": "spell",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Monk",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Champion",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Mortar",
+  "cost": 4,
+  "type": "building",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Mother Witch",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Musketeer",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Night Witch",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "P.E.K.K.A",
+  "cost": 7,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Party Hut",
+  "cost": 5,
+  "type": "building",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Party Rocket",
+  "cost": 5,
+  "type": "spell",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Phoenix",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Poison",
+  "cost": 4,
+  "type": "spell",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Prince",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Princess",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Rage",
+  "cost": 2,
+  "type": "spell",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Raging Prince",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Ram Rider",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Rascals",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Rocket",
+  "cost": 6,
+  "type": "spell",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Royal Delivery",
+  "cost": 3,
+  "type": "spell",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Royal Ghost",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Royal Giant",
+  "cost": 6,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Royal Hogs",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Royal Recruits",
+  "cost": 7,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Santa Hog Rider",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Skeleton Army",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Skeleton Barrel",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Skeleton Dragons",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Skeleton King",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Champion",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Skeletons",
+  "cost": 1,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Sparky",
+  "cost": 6,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Spear Goblins",
+  "cost": 2,
+  "type": "troop",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Super Archers",
+  "cost": 3,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Super Ice Golem",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Super Lava Hound",
+  "cost": 8,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Super Magic Archer",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Super Mini P.E.K.K.A",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Super Witch",
+  "cost": 6,
+  "type": "troop",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Terry",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Champion",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Tesla",
+  "cost": 4,
+  "type": "building",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "The Log",
+  "cost": 2,
+  "type": "spell",
+  "rarity": "Legendary",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Three Musketeers",
+  "cost": 9,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Tombstone",
+  "cost": 3,
+  "type": "building",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Tornado",
+  "cost": 3,
+  "type": "spell",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Valkyrie",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Wall Breakers",
+  "cost": 2,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Witch",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Wizard",
+  "cost": 5,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "X-Bow",
+  "cost": 6,
+  "type": "building",
+  "rarity": "Epic",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Zap",
+  "cost": 2,
+  "type": "spell",
+  "rarity": "Common",
+  "icon": null,
+  "evo_icon": null
+ },
+ {
+  "name": "Zappies",
+  "cost": 4,
+  "type": "troop",
+  "rarity": "Rare",
+  "icon": null,
+  "evo_icon": null
+ }
+]
