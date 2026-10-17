@@ -28,6 +28,7 @@ CLOCK_SECONDS = 1.6
 MATCH_GONE_SECONDS = 3.0
 THREAT_LOST = 1.2  # seconds a tracked unit can go unseen before it counts as dead
 SAME_SPELL_SECONDS = 2.0
+SPELL_SIGHTINGS = 2  # enemy side detections of a spell before it counts as cast
 SURE_VOTES = 1.2  # summed confidence before a name may join a deck learned from play
 LOOKUP_EVERY = 1.0  # seconds between name reads while the intro fades
 LOOKUP_WINDOW = 25.0
@@ -269,9 +270,9 @@ class Match:
                 self.threat.card = p.votes.most_common(1)[0][0]
                 self.threat.track = min(p.tracks, key=lambda k: self.tracks[k].first) if p.tracks else None
 
-        # an enemy spell is a play of its own, it never shows a timer
+        # an enemy spell is a play of its own, it never shows a timer, one frame is not enough to trust it
         for k, t in current:
-            if t.enemy and card(t.card).spell and k not in self.spells_seen:
+            if t.side >= SPELL_SIGHTINGS and card(t.card).spell and k not in self.spells_seen:
                 if not any(self.tracks.get(j) and self.tracks[j].card == t.card and at - s < SAME_SPELL_SECONDS
                            for j, s in self.spells_seen.items()):
                     self._land_spell(t.card, t.x, t.y, at)
