@@ -27,7 +27,8 @@ cp .env.example .env
 
 1. Create a key at [developer.clashroyale.com](https://developer.clashroyale.com) with the IP `45.79.218.79`. That is the [RoyaleAPI relay](https://docs.royaleapi.com/proxy.html), so the key keeps working when your own IP changes. Put it in `.env` as `CR_API_TOKEN`.
 2. Put your player tag (on your profile, without the `#`) in `.env` as `CR_PLAYER_TAG`.
-3. Give your terminal **Screen Recording** and **Accessibility** access in System Settings > Privacy & Security.
+3. Add a [Google AI Studio](https://aistudio.google.com/apikey) key as `GEMINI_API_KEY`. It names the opponent's cards from a short strip of frames, roughly a second after they land. Without it the helper falls back to its offline unit detector.
+4. Give your terminal **Screen Recording** and **Accessibility** access in System Settings > Privacy & Security.
 
 ## Use
 
@@ -45,8 +46,9 @@ Open iPhone Mirroring first. The helper snaps it to the right half of the screen
 
 1. Each frame of the iPhone Mirroring window is cropped to one fixed screen layout.
 2. When a match starts, the opponent's name and clan are read off the screen and their current deck is fetched from the official API.
-3. Enemy cards land with a red stopwatch and their units wear crimson level badges. The open [ClashRoyaleBuildABot](https://github.com/Pbatch/ClashRoyaleBuildABot) unit detector names the unit, narrowed to the opponent's deck, the number of units and their level.
-4. The card cycle and elixir model update, and a small set of rules picks the call: defend, punish low elixir, attack while their answer is out of hand, avoid sitting at full elixir, or wait.
+3. Enemy cards land with a red stopwatch and their units wear crimson level badges. Each landing is named by Gemini Flash Lite and the open [ClashRoyaleBuildABot](https://github.com/Pbatch/ClashRoyaleBuildABot) unit detector, along with the number of units and their level.
+4. Because no card can repeat within 4 plays, the whole sequence of their plays is named at once, so later plays correct earlier mistakes.
+5. The card cycle and elixir model update, and a small set of rules picks the call: defend, punish low elixir, attack while their answer is out of hand, avoid sitting at full elixir, or wait.
 
 See [docs/design.md](docs/design.md) for the details.
 
@@ -54,7 +56,7 @@ See [docs/design.md](docs/design.md) for the details.
 
 - Enemy spells do not show a stopwatch and are not detected yet. The cycle notices plays it missed and stops claiming a certain hand until they cycle out.
 - Opponents without a clan cannot be looked up, so their deck is learned as they play it.
-- The unit detector predates some newer cards and evolved skins.
+- On a recorded match with the opponent's deck known, 32 of 33 enemy deploys were caught and about 70% were named correctly. The unit detector predates some newer cards and evolved skins.
 - 1v1 trophy matches only.
 
 ## Development
@@ -63,6 +65,7 @@ See [docs/design.md](docs/design.md) for the details.
 .venv/bin/pytest
 python scripts/build_cards.py        # refresh card costs and art from the API
 python scripts/demo.py match.mp4     # rebuild docs/demo.gif
+python scripts/evaluate.py match1    # score deploy naming against hand labels in captures/
 ```
 
 The unit detector weights are AGPL-3.0 and are downloaded to `~/Library/Caches/clash-helper` on first run rather than shipped here.
