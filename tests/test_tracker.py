@@ -104,3 +104,17 @@ def test_card_back_too_early_means_missed_plays():
     opp.play("cannon", 3, now=20)
     assert opp.plays[-3:] == ["?", "?", "cannon"]
     assert opp.hand == []
+
+
+def test_decoder_keeps_spells_for_spell_evidence():
+    from collections import Counter
+
+    from clash_helper.decode import Evidence, decode
+
+    deck = ["Skeleton Army", "Mega Knight", "Princess", "Royal Ghost", "Vines", "Bomber", "Goblin Barrel", "Giant Snowball"]
+    evidence = [
+        Evidence(Counter({"skeleton": 2.0}), 12, None),
+        Evidence(Counter(), 0, None, named="Giant Snowball", spell=True),
+        Evidence(Counter({"bomber": 1.0}), 1, None),
+    ]
+    assert decode(evidence, deck, {}) == ["Skeleton Army", "Giant Snowball", "Bomber"]

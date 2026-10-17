@@ -27,6 +27,7 @@ class Evidence:
     units: int  # level badges around the landing spot
     digits: int | None  # digits in the level badge
     named: str | None = None  # the vision model's answer, arrives a moment later
+    spell: bool = False  # seen as a spell landing rather than a deploy timer
 
 
 def scores(evidence: Evidence, deck: list[str], levels: dict[str, int]) -> dict[str, float]:
@@ -50,8 +51,8 @@ def scores(evidence: Evidence, deck: list[str], levels: dict[str, int]) -> dict[
         if evidence.named == name:
             # strong but not final, the cycle can still overrule a slip
             s += NAMED_WEIGHT
-        if card(name).spell:
-            s -= 5.0  # spells never show a deploy timer
+        if card(name).spell != evidence.spell:
+            s -= 5.0  # spells never show a deploy timer and troops always do
         out[name] = s
     return out
 

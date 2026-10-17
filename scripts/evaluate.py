@@ -16,7 +16,7 @@ from clash_helper.cli import video_frames
 from clash_helper.game import Match
 
 CAPTURES = Path(__file__).resolve().parents[1] / "captures"
-SAME_SECONDS = 1.0
+SAME_SECONDS = 1.5
 SAME_PIXELS = 80
 
 

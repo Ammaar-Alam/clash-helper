@@ -50,7 +50,11 @@ def in_match(frame: np.ndarray) -> bool:
     # every bar pixel is either empty dark blue, filling light blue or full magenta
     blue = (bar[..., 0] > 70) & (bar[..., 2] < 90)
     filled = _magenta(_hsv(bar))
-    return bool((blue | filled).mean() > 0.85)
+    if (blue | filled).mean() <= 0.85:
+        return False
+    # menus can have a blue strip there too, only a match has the dark clock box top right
+    clock = _hsv(frame[95:160, 560:660])
+    return bool((clock[..., 2] < 70).mean() > 0.5 and (clock[..., 2] > 180).mean() > 0.04)
 
 
 def read_text(image: np.ndarray) -> list[str]:
@@ -99,6 +103,20 @@ def deploy_clocks(frame: np.ndarray) -> list[tuple[int, int]]:
         if cv2.matchTemplate(around, TIMER, cv2.TM_CCOEFF_NORMED).max() >= TIMER_MATCH:
             found.append((cx, cy))
     return found
+
+
+def unit_side(frame: np.ndarray, x: int, top: int) -> str | None:
+    """Whose unit a detection is, from the badge color just above its head."""
+    patch = frame[max(0, top - 38) : max(1, top + 6), max(0, x - 24) : x + 24]
+    if patch.size == 0:
+        return None
+    hsv = _hsv(patch)
+    h, s, v = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+    crimson = (((h >= 165) | (h <= 3)) & (s > 100) & (v > 90)).mean()
+    blue = ((h >= 98) & (h <= 125) & (s > 110) & (v > 130)).mean()
+    if max(crimson, blue) < 0.04:
+        return None
+    return "theirs" if crimson > blue else "mine"
 
 
 def level_badges(frame: np.ndarray, enemy: bool) -> list[tuple[int, int, int]]:

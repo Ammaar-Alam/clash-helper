@@ -22,7 +22,7 @@ def test_defends_swarm_with_cheapest_answer():
 
 def test_air_threat_needs_air_answer():
     call = advise(10, HAND, 5, Opponent(), Threat("Baby Dragon", 100, 9), answered=False)
-    assert call.action.startswith("Musketeer, in front of left tower")
+    assert call.action == "Musketeer, behind your left tower"
 
 
 def test_saves_when_answer_is_unaffordable():
@@ -63,3 +63,35 @@ def test_unknown_hand_still_gives_timing():
 def test_cheap_unit_is_left_to_the_tower():
     call = advise(10, HAND, 5, Opponent(), Threat("Fire Spirit", 500, 9), answered=False)
     assert not call.urgent
+
+
+def test_playbook_pulls_hog_with_a_building():
+    hand = [card(n) for n in ("Cannon", "Mini P.E.K.K.A", "Arrows", "Giant")]
+    call = advise(10, hand, 5, Opponent(), Threat("Hog Rider", 500, 9), answered=False)
+    assert call.action == "Cannon, center, 3 tiles from the river"
+
+
+def test_support_goes_behind_your_tank():
+    from clash_helper.advisor import MyPlay
+
+    hand = [card(n) for n in ("Witch", "Archers", "Arrows", "Cannon")]
+    call = advise(14, hand, 6, full_opponent(7), None, answered=True, mine=MyPlay("Giant", 10, "left"))
+    assert call.action == "Witch, behind your Giant" and call.rule == "support"
+
+
+def test_finish_a_low_tower_with_a_spell():
+    from clash_helper.board import Board
+
+    board = Board()
+    board.their_towers = {"left": 3052, "right": 60}
+    call = advise(20, HAND, 5, full_opponent(7), None, answered=True, board=board)
+    assert call.action == "The Log their right tower"
+
+
+def test_units_across_the_river_need_defending():
+    from clash_helper.board import Board
+
+    board = Board()
+    board.enemy_home = {"left": 3, "right": 0}
+    call = advise(20, HAND, 5, full_opponent(7), None, answered=False, board=board)
+    assert call.action == "Defend left" and call.urgent

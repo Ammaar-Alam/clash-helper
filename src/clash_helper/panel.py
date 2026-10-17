@@ -57,7 +57,7 @@ class Panel:
             y=y,
             width=WIDTH,
             height=min(height, HEIGHT),
-            on_top=True,
+            on_top=False,
             frameless=True,
             easy_drag=True,
             background_color="#17151d",

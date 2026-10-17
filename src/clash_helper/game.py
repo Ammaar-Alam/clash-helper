@@ -10,11 +10,13 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from clash_helper import api, namer, vision
-from clash_helper.advisor import Call, Threat, advise
+from clash_helper.advisor import Call, MyPlay, Threat, advise
+from clash_helper.board import Board, BoardReader, lane
 from clash_helper.cards import all_cards, card
 from clash_helper.decode import Evidence, decode
 from clash_helper.hand import HandReader
 from clash_helper.identify import Detector, name_deploy
+from clash_helper.spells import SpellWatcher
 from clash_helper.tracker import UNKNOWN, Opponent
 
 VOTE_FRAMES = 8  # frames after a deploy timer that count badges
@@ -69,6 +71,8 @@ class View:
     plays: list[str] = field(default_factory=list)
     queue: list[str | None] = field(default_factory=list)
     opponent: str = ""
+    board: Board | None = None
+    my_hand: list[str | None] = field(default_factory=list)
 
 
 class Match:
@@ -107,6 +111,12 @@ class Match:
         self.answers: queue.Queue[tuple[Pending, str | None]] = queue.Queue()
         self.debug: list = []
         self.last_play = ""
+        self.reader = BoardReader()
+        self.frames = 0
+        self.mine: MyPlay | None = None
+        self.my_plays: list[MyPlay] = []
+        self.last_drop = -10.0
+        self.spells = SpellWatcher()
 
     def _lookup_opponent(self, frame: np.ndarray, now: float) -> None:
         """Read their name and clan, then fetch the deck they are using right now."""
@@ -159,8 +169,21 @@ class Match:
         if self.hand_reader:
             hand, upcoming = self.hand_reader.read(frame)
             # a card mid-slide or being dragged reads as None, keep the last good name
-            self.my_hand = [new or old for new, old in zip(hand, self.my_hand)]
+            hand = [new or old for new, old in zip(hand, self.my_hand)]
+            self._track_my_plays(hand, now)
+            self.my_hand = hand
             self.next_mine = upcoming or self.next_mine
+
+        self.frames += 1
+        # the detector is the slow part, every other frame is enough for the board
+        detections = self.detector.detect(frame) if self.pending or self.frames % 2 == 0 else None
+        self.reader.towers(frame, now)
+        self.reader.units(frame, detections)
+        if self.mine and self.mine.lane is None and detections:
+            units = card(self.mine.card).units
+            spotted = [x for n, x, _ in self.reader.board.my_units if n in units]
+            if spotted:
+                self.mine.lane = lane(spotted[0])
 
         for x, y in vision.deploy_clocks(frame):
             if y > vision.ARENA_BOTTOM - 120 or x > 615:
@@ -171,17 +194,31 @@ class Match:
             self.pending.append(Pending(x, y, now, multiplier))
         self.clocks = [c for c in self.clocks if now - c[2] < CLOCK_SECONDS]
 
+        # spells only get looked for once their deck says which ones exist
+        self.spells.deck = self.opp.deck if self.opp.deck_complete else []
+        for cast in self.spells.update(frame, now, self.clocks):
+            self._land_spell(cast.card, cast.x, cast.y, cast.time, multiplier)
+
         if self.pending:
-            self._vote(frame)
+            self._vote(frame, detections or [])
         return self._view(now)
 
     def _track_my_elixir(self, elixir: int, now: float) -> None:
-        if elixir < self.my_elixir and self.threat and now > self.threat.time:
-            self.answered = True
+        if elixir < self.my_elixir:
+            self.last_drop = now
+            if self.threat and now > self.threat.time:
+                self.answered = True
         self.my_elixir = elixir
 
-    def _vote(self, frame: np.ndarray) -> None:
-        units = self.detector.detect(frame)
+    def _track_my_plays(self, hand: list[str | None], now: float) -> None:
+        """A card leaving the hand right after an elixir drop was played."""
+        if now - self.last_drop > 1.5:
+            return
+        for gone in [c for c in self.my_hand if c and c not in hand]:
+            self.mine = MyPlay(gone, now)
+            self.my_plays.append(self.mine)
+
+    def _vote(self, frame: np.ndarray, units: list) -> None:
         badges = vision.level_badges(frame, enemy=True)
         for p in self.pending:
             p.frames += 1
@@ -221,6 +258,14 @@ class Match:
             image = namer.strip(p.shots, p.x, p.y)
             threading.Thread(target=lambda: self.answers.put((p, namer.name_card(image, options))), daemon=True).start()
 
+    def _land_spell(self, name: str, x: int, y: int, when: float, multiplier: float) -> None:
+        p = Pending(x, y, when, multiplier)
+        self.events.append((p, Evidence(Counter(), 0, None, named=name, spell=True)))
+        self.events.sort(key=lambda e: e[0].time)
+        self._rename()
+        self.played += 1
+        self.last_play = name
+
     def _take_answers(self) -> None:
         changed = False
         while not self.answers.empty():
@@ -259,7 +304,7 @@ class Match:
 
     def _view(self, now: float) -> View:
         hand = [card(n) if n else None for n in self.my_hand]
-        call = advise(now, hand, self.my_elixir, self.opp, self.threat, self.answered)
+        call = advise(now, hand, self.my_elixir, self.opp, self.threat, self.answered, self.reader.board, self.mine)
         return View(
             in_match=True,
             call=call,
@@ -272,4 +317,6 @@ class Match:
             plays=self.opp.plays[-6:],
             queue=self.opp.queue,
             opponent=self.opponent,
+            board=self.reader.board,
+            my_hand=list(self.my_hand),
         )
