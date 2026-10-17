@@ -9,7 +9,9 @@ from functools import cache
 from pathlib import Path
 
 import cv2
+import numpy as np
 
+from clash_helper import journal
 from clash_helper.cards import DATA, card
 from clash_helper.game import View
 from clash_helper.hand import icon_path
@@ -25,8 +27,8 @@ def _icon_urls() -> dict[str, str]:
 
 
 @cache
-def art(name: str) -> str | None:
-    """Card art as a small data URI, keeping its transparent corners."""
+def card_image(name: str) -> np.ndarray | None:
+    """Card art as BGRA cropped to the card, 128 px wide."""
     url = _icon_urls().get(name)
     if not url:
         return None
@@ -36,12 +38,32 @@ def art(name: str) -> str | None:
         return None
     if rgba is None:
         return None
-    if rgba.shape[2] == 4:
-        ys, xs = (rgba[:, :, 3] > 16).nonzero()
-        rgba = rgba[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
-    rgba = cv2.resize(rgba, (128, round(128 * rgba.shape[0] / rgba.shape[1])), interpolation=cv2.INTER_AREA)
+    if rgba.shape[2] == 3:
+        rgba = cv2.cvtColor(rgba, cv2.COLOR_BGR2BGRA)
+    ys, xs = (rgba[:, :, 3] > 16).nonzero()
+    rgba = rgba[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
+    return cv2.resize(rgba, (128, round(128 * rgba.shape[0] / rgba.shape[1])), interpolation=cv2.INTER_AREA)
+
+
+@cache
+def art(name: str) -> str | None:
+    """Card art as a small data URI, keeping its transparent corners."""
+    rgba = card_image(name)
+    if rgba is None:
+        return None
     ok, png = cv2.imencode(".png", rgba)
     return "data:image/png;base64," + base64.b64encode(png.tobytes()).decode() if ok else None
+
+
+class Bridge:
+    """What the page can ask Python for."""
+
+    def get_record(self) -> bool:
+        return journal.recording()
+
+    def set_record(self, on: bool) -> bool:
+        journal.set_recording(bool(on))
+        return journal.recording()
 
 
 class Panel:
@@ -61,6 +83,7 @@ class Panel:
             frameless=True,
             easy_drag=True,
             background_color="#17151d",
+            js_api=Bridge(),
         )
 
     def payload(self, view: View) -> dict:
@@ -73,6 +96,7 @@ class Panel:
             "opponent": view.opponent,
             "action": view.call.action,
             "reason": view.call.reason,
+            "plan": view.call.plan,
             "urgent": view.call.urgent,
             "hand": view.their_hand,
             "queue": waiting,

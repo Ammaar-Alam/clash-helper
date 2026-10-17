@@ -66,12 +66,52 @@
     gap: var(--space-md);
     min-height: 14px;
   }
-  .meta .opponent { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .meta .opponent b { color: var(--text); font-weight: 600; }
+  .controls { display: flex; align-items: center; gap: var(--space-sm); position: relative; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 24px; padding: 0 10px;
+    border: 1px solid var(--line); border-radius: 12px;
+    background: transparent; color: var(--muted);
+    font: 600 11px/1 var(--body); letter-spacing: 0.06em; text-transform: uppercase;
+    cursor: pointer;
+    transition: color 160ms var(--ease), border-color 160ms var(--ease), background 160ms var(--ease);
+  }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--faint); transition: background 160ms var(--ease); }
+  .pill[aria-pressed="true"] { color: var(--text); border-color: oklch(0.45 0.08 25); background: oklch(0.24 0.04 25); }
+  .pill[aria-pressed="true"]::before { background: var(--urgent); }
+  .pill:hover, .info:hover { border-color: var(--faint); }
+  .pill:focus-visible, .info:focus-visible { outline: 2px solid var(--muted); outline-offset: 2px; }
+  .info {
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 1px solid var(--line); background: transparent; color: var(--muted);
+    font: 600 12px/1 var(--display); cursor: pointer;
+  }
+  .note {
+    position: absolute; top: 32px; right: 0; z-index: 2;
+    width: 236px; padding: var(--space-md) var(--space-lg);
+    border: 1px solid var(--line); border-radius: 10px;
+    background: var(--raise); color: var(--muted);
+    font-size: 13px; line-height: 1.45;
+    opacity: 0; transform: translateY(-4px); pointer-events: none;
+    transition: opacity 160ms var(--ease), transform 160ms var(--ease);
+  }
+  .note.shown { opacity: 1; transform: none; pointer-events: auto; }
+  .note b { color: var(--text); font-weight: 600; }
+  .tagline { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-md); }
+  .tagline .opponent { color: var(--faint); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tagline .opponent b { color: var(--muted); font-weight: 600; }
+  .plan {
+    margin-top: var(--space-lg);
+    display: flex; gap: var(--space-sm); align-items: baseline;
+    color: var(--text); font-size: 14px; line-height: 1.4;
+  }
+  .plan:empty { display: none; }
+  .plan .label { flex: none; color: var(--faint); }
 
   /* the call owns the top of the panel */
   .call {
     margin-top: var(--space-xl);
+    margin-bottom: var(--space-lg);
     min-height: 168px;
     display: flex;
     flex-direction: column;
@@ -93,7 +133,7 @@
   .call.urgent h1 { color: var(--urgent); }
   .call.urgent .label { color: var(--urgent); }
   .call .tag {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: var(--space-sm);
     margin-bottom: var(--space-md);
@@ -101,11 +141,12 @@
   }
   .call .tag::before {
     content: "";
+    display: none;
     width: 6px; height: 6px; border-radius: 50%;
     background: currentColor;
     opacity: 0;
   }
-  .call.urgent .tag::before { opacity: 1; color: var(--urgent); animation: pulse 1.1s var(--ease) infinite; }
+  .call.urgent .tag::before { display: block; opacity: 1; color: var(--urgent); animation: pulse 1.1s var(--ease) infinite; }
   .enter { animation: rise 240ms var(--ease) both; }
 
   /* elixir meters, the one place magenta lives */
@@ -221,7 +262,13 @@
 <main class="panel waiting" id="panel">
   <div class="meta">
     <span class="label">Clash Helper</span>
-    <span class="opponent" id="opponent"></span>
+    <div class="controls">
+      <button class="pill" id="record" aria-pressed="true" title="Record matches">Rec</button>
+      <button class="info" id="info" aria-label="About recording" aria-expanded="false">i</button>
+      <div class="note" id="note" role="dialog">
+        <b>Recording</b> saves each match on this Mac: a small video, every call and how it went. Over many games that shows which advice actually wins, and the rules get tuned from it.
+      </div>
+    </div>
   </div>
 
   <section class="idle">
@@ -231,9 +278,10 @@
 
   <div class="live">
     <section class="call" id="call">
-      <div class="tag label" id="tag"></div>
+      <div class="tagline"><div class="tag label" id="tag"></div><span class="opponent" id="opponent"></span></div>
       <h1 id="action"></h1>
       <p id="reason"></p>
+      <p class="plan" id="planRow"></p>
     </section>
 
     <section class="elixir" aria-label="Elixir">
@@ -310,12 +358,31 @@
     return el;
   }
 
+  async function syncRecord(on) {
+    const api = window.pywebview && window.pywebview.api;
+    if (!api) return;
+    const state = on === undefined ? await api.get_record() : await api.set_record(on);
+    $("record").setAttribute("aria-pressed", String(state));
+  }
+  window.addEventListener("pywebviewready", () => syncRecord());
+  $("record").addEventListener("click", () => syncRecord($("record").getAttribute("aria-pressed") !== "true"));
+  $("info").addEventListener("click", () => {
+    const shown = $("note").classList.toggle("shown");
+    $("info").setAttribute("aria-expanded", String(shown));
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".controls")) { $("note").classList.remove("shown"); $("info").setAttribute("aria-expanded", "false"); }
+  });
+
   window.render = (s) => {
     Object.assign(art, s.art || {});
     $("panel").className = "panel" + (s.inMatch ? "" : " waiting");
     $("opponent").innerHTML = s.opponent ? `vs <b>${s.opponent}</b>` : "";
     if (!s.inMatch) { lastCall = ""; lastHand = ""; lastQueue = ""; return; }
 
+    const plan = $("planRow");
+    plan.innerHTML = s.plan ? `<span class="label">Then</span><span></span>` : "";
+    if (s.plan) plan.lastChild.textContent = s.plan.charAt(0).toUpperCase() + s.plan.slice(1);
     const call = s.action + "|" + s.reason + "|" + s.urgent;
     if (call !== lastCall) {
       lastCall = call;

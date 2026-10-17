@@ -139,48 +139,6 @@ ROLES: dict[str, str] = {
     "Zappies": "aa",
 }
 
-# detector unit names that differ from the card name
-UNITS: dict[str, list[str]] = {
-    "Archers": ["archer"],
-    "Baby Dragon": ["hungry_dragon"],
-    "Barbarian Barrel": ["barbarian"],
-    "Barbarian Hut": ["barbarian_hut", "barbarian"],
-    "Barbarians": ["barbarian"],
-    "Bats": ["bat"],
-    "Elite Barbarians": ["elite_barbarian"],
-    "Elixir Golem": ["elixir_golem_large", "elixir_golem_medium", "elixir_golem_small"],
-    "Goblin Barrel": ["goblin"],
-    "Goblin Gang": ["goblin", "spear_goblin"],
-    "Goblin Hut": ["goblin_hut", "spear_goblin"],
-    "Goblins": ["goblin"],
-    "Golem": ["golem", "golemite"],
-    "Graveyard": ["skeleton"],
-    "Guards": ["guard"],
-    "Hog Rider": ["hog_rider"],
-    "Lava Hound": ["lava_hound", "lava_pup"],
-    "Little Prince": ["little_prince", "royal_guardian"],
-    "Mini P.E.K.K.A": ["minipekka"],
-    "Minion Horde": ["minion"],
-    "Minions": ["minion"],
-    "Mother Witch": ["mother_witch"],
-    "P.E.K.K.A": ["pekka"],
-    "Phoenix": ["phoenix_large", "phoenix_small", "phoenix_egg"],
-    "Rascals": ["rascal_boy", "rascal_girl"],
-    "Royal Hogs": ["royal_hog"],
-    "Royal Recruits": ["royal_recruit"],
-    "Skeleton Army": ["skeleton"],
-    "Skeleton Barrel": ["skeleton"],
-    "Skeleton Dragons": ["skeleton_dragon"],
-    "Skeletons": ["skeleton"],
-    "Spear Goblins": ["spear_goblin"],
-    "Three Musketeers": ["musketeer"],
-    "Tombstone": ["tombstone", "skeleton"],
-    "Wall Breakers": ["wall_breaker"],
-    "Witch": ["witch", "skeleton"],
-    "Zappies": ["zappy"],
-}
-
-
 # how many level badges a deploy shows, anything missing is one unit
 COUNTS: dict[str, int] = {
     "Archers": 2,
@@ -226,14 +184,6 @@ class Card:
     @property
     def count(self) -> int:
         return 0 if self.spell else COUNTS.get(self.name, 1)
-
-    @property
-    def units(self) -> list[str]:
-        """Detector class names this card puts on the arena."""
-        if self.spell and self.name not in UNITS:
-            return []
-        snake = self.name.lower().replace(".", "").replace("-", "_").replace(" ", "_")
-        return UNITS.get(self.name, [snake])
 
 
 @cache

@@ -60,7 +60,7 @@ def replay(path: Path, fps: float) -> None:
     """Print every opponent play and call change from a recorded match."""
     from clash_helper.game import Match
 
-    match = Match()
+    match = Match(sync=True)
     last_call = ""
     plays = 0
     for frame, now in video_frames(path, fps):
@@ -73,42 +73,65 @@ def replay(path: Path, fps: float) -> None:
             print(f"{now:6.1f}s    -> {last_call}")
 
 
-def _feed(frames, views: queue.Queue, realtime: bool) -> None:
-    from clash_helper.game import Match
-
-    match = Match()
-    start = time.monotonic()
-    for frame, now in frames:
-        if realtime:
-            time.sleep(max(0.0, now - (time.monotonic() - start)))
-        views.put(match.step(frame, now))
-
-
 def live_frames(fps: float):
+    """Frames from the phone, with where the screen sits in the window for the overlay."""
     window = capture.find_window()
     start = time.monotonic()
     while True:
         tick = time.monotonic()
         frame = capture.grab(window) if window else None
-        canonical = screen.normalize(frame) if frame is not None else None
-        if canonical is None:
+        rect = screen.screen_rect(frame) if frame is not None else None
+        if rect is None:
             # the window was closed, moved to another space or resized
             window = capture.find_window()
         else:
-            yield canonical, tick - start
+            yield screen.normalize(frame, rect), tick - start, (window, (frame.shape[1], frame.shape[0]), rect)
         time.sleep(max(0.0, 1 / fps - (time.monotonic() - tick)))
 
 
+def _on_main(make):
+    """Build an AppKit object on the main thread and hand it back."""
+    from PyObjCTools import AppHelper
+
+    made: list = []
+    done = threading.Event()
+    AppHelper.callAfter(lambda: (made.append(make()), done.set()))
+    done.wait()
+    return made[0]
+
+
 def run(video: Path | None, fps: float) -> None:
+    from PyObjCTools import AppHelper
+
+    from clash_helper.game import Match
+    from clash_helper.journal import Journal
+    from clash_helper.overlay import Overlay
     from clash_helper.panel import WIDTH, Panel
 
     window = capture.place_window() or capture.find_window()
     if window is None:
         raise SystemExit("Open iPhone Mirroring first")
-    views: queue.Queue = queue.Queue()
-    frames = video_frames(video, fps) if video else live_frames(fps)
-    threading.Thread(target=_feed, args=(frames, views, video is not None), daemon=True).start()
-    Panel(window.x - WIDTH - 12, window.y, window.height, views).run()
+    panel = Panel(window.x - WIDTH - 12, window.y, window.height, queue.Queue())
+
+    def loop() -> None:
+        match = Match()
+        overlay = _on_main(Overlay) if not video else None
+        journal = Journal(fps) if not video else None
+        start = time.monotonic()
+        frames = ((f, t, None) for f, t in video_frames(video, fps)) if video else live_frames(fps)
+        for frame, now, geometry in frames:
+            if video:
+                time.sleep(max(0.0, now - (time.monotonic() - start)))
+            view = match.step(frame, now)
+            panel.show(view)
+            if journal:
+                journal.update(match, frame, view, now)
+            if overlay and geometry:
+                phone, size, rect = geometry
+                target = view.call.target if view.in_match else None
+                AppHelper.callAfter(overlay.show, phone, size, rect, view.call.card, target, view.call.urgent)
+
+    panel.run(loop)
 
 
 def main() -> None:
@@ -121,9 +144,14 @@ def main() -> None:
     rep.add_argument("video", type=Path)
     rep.add_argument("--panel", action="store_true", help="show the panel at real speed instead of printing")
     sub.add_parser("deck", help="suggest a deck from your cards")
+    sub.add_parser("setup", help="install the unit detector, once")
     args = parser.parse_args()
     if args.command == "record":
         record(args.out, args.fps)
+    elif args.command == "setup":
+        from clash_helper import kcr
+
+        kcr.setup()
     elif args.command == "deck":
         from clash_helper import api, deck
 

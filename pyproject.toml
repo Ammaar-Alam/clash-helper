@@ -10,7 +10,6 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "numpy>=2.0",
-  "onnxruntime>=1.18",
   "opencv-python>=4.10",
   "pyobjc-framework-Quartz>=10.0",
   "pyobjc-framework-Cocoa>=10.0",

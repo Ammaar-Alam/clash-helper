@@ -22,12 +22,14 @@ SAME_PIXELS = 80
 
 def predictions(match_name: str, use_deck: bool) -> list[tuple[float, int, int, str]]:
     deck = json.loads((CAPTURES / "matches.json").read_text())[match_name]["deck"]
-    match = Match(lookup=False)
+    match = Match(lookup=False, sync=True)
     final: list = []
     for frame, now in video_frames(CAPTURES / f"{match_name}.mp4", 5):
         match.step(frame, now)
-        if use_deck and match.started is not None and not match.opp.deck_complete:
+        if use_deck and match.started is not None and not match.deck_from_api:
+            # stands in for a successful lookup of their deck
             match.opp.preload(deck)
+            match.deck_from_api = True
         # names keep improving as answers arrive, keep the latest before the match resets
         if match.debug:
             final = list(match.debug)

@@ -1,30 +1,34 @@
-"""One match from frames in to calls out, shared by live play and replays."""
+"""One match from frames in to calls out, shared by live play and replays.
+
+The KataCR detector sees every unit and spell with its side and a track id.
+The red deploy timer says exactly when and where an enemy card lands, the
+tracked units around it say what it was and follow it down the lane.
+"""
 
 from __future__ import annotations
 
-import queue
 import threading
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 
 import numpy as np
 
-from clash_helper import api, namer, vision
-from clash_helper.advisor import Call, MyPlay, Threat, advise
-from clash_helper.board import Board, BoardReader, lane
-from clash_helper.cards import all_cards, card
+from clash_helper import api, kcr, vision
+from clash_helper.advisor import Call, MyPlay, Situation, Threat, advise
+from clash_helper.board import LANES, Board, BoardReader, lane
+from clash_helper.cards import card
 from clash_helper.decode import Evidence, decode
 from clash_helper.hand import HandReader
-from clash_helper.identify import Detector, name_deploy
-from clash_helper.spells import SpellWatcher
 from clash_helper.tracker import UNKNOWN, Opponent
 
-VOTE_FRAMES = 8  # frames after a deploy timer that count badges
-SPAWN_FRAMES = 5  # of those, frames where the new unit is still on its timer
+NAME_SECONDS = 1.4  # how long after a deploy timer the units around it vote on the card
 CLOCK_MERGE = 70  # px, one deploy timer seen over several frames
 CLOCK_SECONDS = 1.6
 MATCH_GONE_SECONDS = 3.0
-WIDE_BADGE = 18  # px, a level of 10 or more
+THREAT_LOST = 1.2  # seconds a tracked unit can go unseen before it counts as dead
+SAME_SPELL_SECONDS = 2.0
+SURE_VOTES = 1.2  # summed confidence before a name may join a deck learned from play
 LOOKUP_EVERY = 1.0  # seconds between name reads while the intro fades
 LOOKUP_WINDOW = 25.0
 
@@ -35,25 +39,26 @@ class Pending:
     y: int
     time: float
     multiplier: float
-    votes: Counter = field(default_factory=Counter)
-    frames: int = 0
-    counts: list[int] = field(default_factory=list)
-    widths: list[int] = field(default_factory=list)
-    shots: list[np.ndarray] = field(default_factory=list)  # frames 0.4 s apart for the vision model
+    votes: Counter = field(default_factory=Counter)  # card -> summed confidence
+    tracks: set[int] = field(default_factory=set)
+
+
+@dataclass
+class Track:
+    side: int = 0  # votes, above zero is the opponent, single frames flip now and then
+    cards: Counter = field(default_factory=Counter)
+    x: int = 0
+    y: int = 0
+    first: float = 0.0
+    last: float = 0.0
 
     @property
-    def units(self) -> int:
-        """Badge count around the landing spot once everything dropped in, robust to passers-by."""
-        if not self.counts:
-            return 0
-        return sorted(self.counts)[int(0.75 * (len(self.counts) - 1))]
+    def enemy(self) -> bool:
+        return self.side > 0
 
     @property
-    def digits(self) -> int | None:
-        """How many digits the units' level has, a two digit badge is clearly wider."""
-        if not self.widths:
-            return None
-        return 2 if max(self.widths) >= WIDE_BADGE else 1
+    def card(self) -> str | None:
+        return self.cards.most_common(1)[0][0] if self.cards else None
 
 
 @dataclass
@@ -76,23 +81,35 @@ class View:
 
 
 class Match:
-    def __init__(self, detector: Detector | None = None, lookup: bool = True) -> None:
-        self.detector = detector or Detector()
+    def __init__(self, detector: kcr.Detector | None = None, lookup: bool = True, sync: bool = False) -> None:
+        """`sync` waits for the detector on every frame, for replays that must not skip any."""
+        if detector is None and not kcr.ready():
+            raise SystemExit("The unit detector is not installed yet, run: clash-helper setup")
+        self.detector = detector or kcr.Detector()
         self.lookup = lookup
+        self.sync = sync
         self.hand_reader: HandReader | None = None
+        self.my_deck: list[dict] = []
+        self.ended: dict = {}
         self._reset()
-        tag = api.setting("CR_PLAYER_TAG")
-        if lookup and tag and api.token():
-            threading.Thread(target=self._load_my_deck, args=(tag,), daemon=True).start()
 
-    def _load_my_deck(self, tag: str) -> None:
+    def _load_my_deck(self) -> None:
+        """Read the deck being played right now, so switching decks between matches just works."""
+        tag = api.setting("CR_PLAYER_TAG")
+        if not (self.lookup and tag and api.token()):
+            return
         try:
-            self.hand_reader = HandReader(api.player(tag)["currentDeck"])
+            deck = api.player(tag)["currentDeck"]
         except (api.ApiError, OSError) as error:
             print(f"could not load your deck: {error}", flush=True)
+            return
+        if [c["name"] for c in deck] != [c["name"] for c in self.my_deck]:
+            self.hand_reader = HandReader(deck)
+            self.my_deck = deck
 
     def _reset(self) -> None:
         self.opp = Opponent()
+        self.deck_from_api = False
         self.started: float | None = None
         self.last_seen = 0.0
         self.pending: list[Pending] = []
@@ -103,32 +120,38 @@ class Match:
         self.lookup_state = "todo"  # todo, running, done
         self.levels: dict[str, int] = {}
         self.opponent = ""
+        self.lookup_note = ""
         self.last_ocr = -10.0
         self.my_hand: list = [None] * 4
-        self.next_mine: str | None = None
         self.played = 0
         self.events: list[tuple[Pending, Evidence]] = []
-        self.answers: queue.Queue[tuple[Pending, str | None]] = queue.Queue()
         self.debug: list = []
         self.last_play = ""
         self.reader = BoardReader()
-        self.frames = 0
         self.mine: MyPlay | None = None
         self.my_plays: list[MyPlay] = []
         self.last_drop = -10.0
-        self.spells = SpellWatcher()
+        self.multiplier = 1.0
+        self.last_rule = ""
+        self.enemies: list[tuple[int, int]] = []
+        self.tracks: dict[int, Track] = {}
+        self.spells_seen: dict[int, float] = {}
+        self.last_seen_units = 0.0
 
     def _lookup_opponent(self, frame: np.ndarray, now: float) -> None:
         """Read their name and clan, then fetch the deck they are using right now."""
         if now - self.last_ocr < LOOKUP_EVERY or now - (self.started or now) > LOOKUP_WINDOW:
             return
         self.last_ocr = now
-        # name, clan, trophies, the clan line is missing for clanless players
-        lines = [t for t in vision.read_text(frame[95:200, 55:320]) if not t.replace(" ", "").isdigit()]
-        if len(lines) < 2:
+        # name, clan, trophies, the clan line says No Clan for clanless players
+        read = vision.read_text(frame[95:200, 55:320])
+        lines = [t for t in read if not t.replace(" ", "").isdigit()]
+        trophies = [int(t.replace(" ", "")) for t in read if t.replace(" ", "").isdigit()]
+        if len(lines) < 2 or not trophies:
             return
         name, clan = lines[0], lines[1]
         self.opponent = name
+        self.lookup_note = f"read {name!r} in clan {clan!r} with {trophies[0]} trophies"
         if clan.lower() == "no clan":
             # the API has no name search, a clanless player cannot be found
             self.lookup_state = "done"
@@ -141,11 +164,18 @@ class Match:
             except api.ApiError as error:
                 print(f"opponent lookup failed: {error}", flush=True)
                 found = None
+            # a namesake in a same named clan would load a stranger's deck, the trophies must agree too
+            if found and abs(found.get("trophies", 0) - trophies[0]) > 60:
+                self.lookup_note += f", found {found['name']} with {found.get('trophies')} trophies so ignored them"
+                found = None
+            elif not found:
+                self.lookup_note += ", no unique match in that clan"
             if found and found.get("currentDeck"):
                 self.opp.preload([c["name"] for c in found["currentDeck"]])
+                self.deck_from_api = True
                 # the badge shows the level counted from 16 down for every rarity
                 self.levels = {c["name"]: c["level"] + 16 - c["maxLevel"] for c in found["currentDeck"]}
-                print(f"opponent deck: {', '.join(self.opp.deck)}", flush=True)
+                self.lookup_note += f", deck {', '.join(self.opp.deck)}"
             self.lookup_state = "done"
 
         threading.Thread(target=run, daemon=True).start()
@@ -153,37 +183,38 @@ class Match:
     def step(self, frame: np.ndarray, now: float) -> View:
         if not vision.in_match(frame):
             if self.started is not None and now - self.last_seen > MATCH_GONE_SECONDS:
+                # keep what happened for the journal, the next match starts clean
+                self.ended = {"plays": list(self.debug), "opponent": self.opponent, "deck": list(self.opp.deck),
+                              "lookup": self.lookup_note, "deck_from_api": self.deck_from_api}
                 self._reset()
             return View(in_match=False) if self.started is None else self._view(now)
         if self.started is None:
             self.started = now
             self.opp.last_time = now
+            threading.Thread(target=self._load_my_deck, daemon=True).start()
         self.last_seen = now
         if self.lookup and self.lookup_state == "todo" and api.token():
             self._lookup_opponent(frame, now)
 
-        self._take_answers()
-        multiplier = vision.elixir_multiplier(frame)
+        multiplier = self.multiplier = vision.elixir_multiplier(frame)
         self.opp.tick(now, multiplier)
         self._track_my_elixir(vision.own_elixir(frame), now)
         if self.hand_reader:
-            hand, upcoming = self.hand_reader.read(frame)
+            hand, _ = self.hand_reader.read(frame)
             # a card mid-slide or being dragged reads as None, keep the last good name
             hand = [new or old for new, old in zip(hand, self.my_hand)]
             self._track_my_plays(hand, now)
             self.my_hand = hand
-            self.next_mine = upcoming or self.next_mine
 
-        self.frames += 1
-        # the detector is the slow part, every other frame is enough for the board
-        detections = self.detector.detect(frame) if self.pending or self.frames % 2 == 0 else None
+        # the detector works in the background, every new result updates the board
+        self.detector.submit(frame, now)
+        while self.sync and self.detector.busy:
+            time.sleep(0.002)
+        seen_at, units = self.detector.result()
+        if seen_at > self.last_seen_units:
+            self.last_seen_units = seen_at
+            self._see(units, seen_at)
         self.reader.towers(frame, now)
-        self.reader.units(frame, detections)
-        if self.mine and self.mine.lane is None and detections:
-            units = card(self.mine.card).units
-            spotted = [x for n, x, _ in self.reader.board.my_units if n in units]
-            if spotted:
-                self.mine.lane = lane(spotted[0])
 
         for x, y in vision.deploy_clocks(frame):
             if y > vision.ARENA_BOTTOM - 120 or x > 615:
@@ -192,16 +223,67 @@ class Match:
                 continue
             self.clocks.append((x, y, now))
             self.pending.append(Pending(x, y, now, multiplier))
+            # react the moment it lands, the name and the track follow a moment later
+            self.threat = Threat(UNKNOWN, x, now, y, last_seen=now)
+            self.answered = False
         self.clocks = [c for c in self.clocks if now - c[2] < CLOCK_SECONDS]
 
-        # spells only get looked for once their deck says which ones exist
-        self.spells.deck = self.opp.deck if self.opp.deck_complete else []
-        for cast in self.spells.update(frame, now, self.clocks):
-            self._land_spell(cast.card, cast.x, cast.y, cast.time, multiplier)
-
-        if self.pending:
-            self._vote(frame, detections or [])
+        for p in [p for p in self.pending if now - p.time >= NAME_SECONDS]:
+            self.pending.remove(p)
+            self._land(p)
         return self._view(now)
+
+    def _see(self, units: list[kcr.Unit], at: float) -> None:
+        """Fold one detector result into the tracks, the board, the open deploys and the threat."""
+        current: list[tuple[int, Track]] = []
+        for u in units:
+            if not u.card:
+                continue
+            t = self.tracks.setdefault(u.track, Track(first=at))
+            t.side += 1 if u.enemy else -1
+            t.cards[u.card] += u.conf
+            t.x, t.y, t.last = u.x, u.bottom, at
+            current.append((u.track, t))
+        self.tracks = {k: t for k, t in self.tracks.items() if at - t.last < 5}
+
+        troops = [(k, t) for k, t in current if not card(t.card).spell]
+        self.enemies = [(t.x, t.y) for _, t in troops if t.enemy]
+        mine = [(t.card, t.x, t.y) for _, t in troops if not t.enemy]
+        board = self.reader.board
+        board.my_units = mine
+        board.enemy_home = {ln: sum(1 for x, y in self.enemies if lane(x) == ln and y > vision.RIVER_Y) for ln in LANES}
+        board.mine_away = {ln: sum(1 for _, x, y in mine if lane(x) == ln and y < vision.RIVER_Y) for ln in LANES}
+        board.mine_home = {ln: sum(1 for _, x, y in mine if lane(x) == ln and y >= vision.RIVER_Y) for ln in LANES}
+        if self.mine and self.mine.lane is None:
+            spotted = [(x, y) for name, x, y in mine if name == self.mine.card]
+            if spotted:
+                self.mine.lane, self.mine.at = lane(spotted[0][0]), spotted[0]
+
+        # units standing on a fresh deploy timer vote on what it was
+        for p in self.pending:
+            for k, t in troops:
+                if t.enemy and abs(t.x - p.x) < 70 and -40 < t.y - p.y < 110:
+                    p.votes[t.card] += t.cards[t.card] / max(1, sum(t.cards.values()))
+                    p.tracks.add(k)
+            if self.threat and self.threat.time == p.time and p.votes:
+                self.threat.card = p.votes.most_common(1)[0][0]
+                self.threat.track = min(p.tracks, key=lambda k: self.tracks[k].first) if p.tracks else None
+
+        # an enemy spell is a play of its own, it never shows a timer
+        for k, t in current:
+            if t.enemy and card(t.card).spell and k not in self.spells_seen:
+                if not any(self.tracks.get(j) and self.tracks[j].card == t.card and at - s < SAME_SPELL_SECONDS
+                           for j, s in self.spells_seen.items()):
+                    self._land_spell(t.card, t.x, t.y, at)
+                self.spells_seen[k] = at
+
+        # follow the threat by its track, it is gone once the track is
+        if self.threat and self.threat.track is not None:
+            t = self.tracks.get(self.threat.track)
+            if t and at - t.last < THREAT_LOST:
+                self.threat.x, self.threat.y, self.threat.last_seen = t.x, t.y, at
+            else:
+                self.threat = None
 
     def _track_my_elixir(self, elixir: int, now: float) -> None:
         if elixir < self.my_elixir:
@@ -218,93 +300,54 @@ class Match:
             self.mine = MyPlay(gone, now)
             self.my_plays.append(self.mine)
 
-    def _vote(self, frame: np.ndarray, units: list) -> None:
-        badges = vision.level_badges(frame, enemy=True)
-        for p in self.pending:
-            p.frames += 1
-            if p.frames % 2 == 1:
-                p.shots.append(frame)
-            if p.frames >= 2:
-                # the units need a moment to drop in and show their badges
-                near = [w for bx, by, w in badges if abs(bx - p.x) < 75 and -90 < by - p.y < 60]
-                p.counts.append(len(near))
-                p.widths += near
-            for name, conf, x, top, bottom in units:
-                # a fresh unit stands on its deploy timer, older units nearby have walked off it
-                if p.frames > SPAWN_FRAMES or not (abs(x - p.x) < 50 and -30 < bottom - p.y < 80):
-                    continue
-                # enemy units wear their crimson level badge just above the head
-                if any(abs(bx - x) < 40 and top - 45 < by < top + 35 for bx, by, _ in badges):
-                    p.votes[name] += conf
-        for p in [p for p in self.pending if p.frames >= VOTE_FRAMES]:
-            self.pending.remove(p)
-            self._land(p)
-
     def _land(self, p: Pending) -> None:
-        evidence = Evidence(p.votes, p.units, p.digits)
-        self.events.append((p, evidence))
+        named = p.votes.most_common(1)[0][0] if p.votes else None
+        self.events.append((p, Evidence(p.votes, len(p.tracks), None, named=named)))
         self._rename()
         self.played += 1
         self.last_play = self.debug[-1][2]
-        played = card(self.last_play) if self.last_play != UNKNOWN else None
-        if played and not played.spell and not played.building:
-            self.threat = Threat(self.last_play, p.x, p.time)
-            self.answered = False
-        if api.setting("GEMINI_API_KEY") and p.shots:
-            if self.opp.deck_complete:
-                options = {n: self.levels.get(n) for n in self.opp.deck}
-            else:
-                options = {n: None for n, c in all_cards().items() if not c.spell}
-            image = namer.strip(p.shots, p.x, p.y)
-            threading.Thread(target=lambda: self.answers.put((p, namer.name_card(image, options))), daemon=True).start()
+        if self.threat and self.threat.time == p.time:
+            self.threat.card = self.last_play
 
-    def _land_spell(self, name: str, x: int, y: int, when: float, multiplier: float) -> None:
-        p = Pending(x, y, when, multiplier)
-        self.events.append((p, Evidence(Counter(), 0, None, named=name, spell=True)))
+    def _land_spell(self, name: str, x: int, y: int, when: float) -> None:
+        p = Pending(x, y, when, self.multiplier, Counter({name: 2.0}))
+        self.events.append((p, Evidence(p.votes, 0, None, named=name, spell=True)))
         self.events.sort(key=lambda e: e[0].time)
         self._rename()
         self.played += 1
         self.last_play = name
 
-    def _take_answers(self) -> None:
-        changed = False
-        while not self.answers.empty():
-            p, answer = self.answers.get_nowait()
-            for q, evidence in self.events:
-                if q is p and answer:
-                    evidence.named = answer
-                    changed = True
-        if changed:
-            self._rename()
-            if self.threat and self.events and self.threat.time == self.events[-1][0].time:
-                self.threat = Threat(self.debug[-1][2], self.threat.x, self.threat.time)
-
     def _rename(self) -> None:
         """Best names for every play so far from all evidence."""
-        if self.opp.deck_complete:
-            # with their 8 cards known, the cycle lets later plays fix earlier names
+        if self.deck_from_api:
+            # with their real 8 cards, the cycle lets later plays fix earlier names
             names = decode([e for _, e in self.events], self.opp.deck, self.levels)
         else:
-            names = [
-                e.named or name_deploy(e.votes, None, e.units) or UNKNOWN
-                for _, e in self.events
-            ]
+            names = [e.named or UNKNOWN for _, e in self.events]
         self._replay(names)
 
     def _replay(self, names: list[str]) -> None:
         """Rebuild the opponent from the start with the current best names."""
         opp = Opponent(last_time=self.started or 0.0)
-        if self.opp.deck_complete:
+        if self.deck_from_api:
             opp.preload(self.opp.deck)
-        for (p, _), name in zip(self.events, names):
+        for (p, evidence), name in zip(self.events, names):
             played = card(name) if name != UNKNOWN else None
-            opp.play(name, played.cost if played else 3, p.time, p.multiplier, champion=bool(played and played.has("champion")))
+            # a deck learned from play only takes names the detector was sure about
+            sure = self.deck_from_api or sum(evidence.votes.values()) >= SURE_VOTES
+            opp.play(name if sure else UNKNOWN, played.cost if played else 3, p.time, p.multiplier,
+                     champion=bool(played and played.has("champion")))
         self.opp = opp
         self.debug = [(p, dict(p.votes), name) for (p, _), name in zip(self.events, names)]
 
     def _view(self, now: float) -> View:
         hand = [card(n) if n else None for n in self.my_hand]
-        call = advise(now, hand, self.my_elixir, self.opp, self.threat, self.answered, self.reader.board, self.mine)
+        call = advise(Situation(
+            now=now, hand=hand, elixir=self.my_elixir, opp=self.opp, threat=self.threat, answered=self.answered,
+            board=self.reader.board, mine=self.mine, multiplier=self.multiplier, enemies=self.enemies,
+            last_rule=self.last_rule,
+        ))
+        self.last_rule = call.rule
         return View(
             in_match=True,
             call=call,

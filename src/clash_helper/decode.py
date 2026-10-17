@@ -14,7 +14,6 @@ from collections import Counter
 from dataclasses import dataclass
 
 from clash_helper.cards import card
-from clash_helper.identify import unit_cards
 
 BEAM = 300
 REPEAT_COST = 3.0  # nats, a repeat within 4 plays needs strong evidence
@@ -23,7 +22,7 @@ NAMED_WEIGHT = 3.0
 
 @dataclass
 class Evidence:
-    votes: Counter  # detector unit -> summed confidence
+    votes: Counter  # card -> summed detector confidence
     units: int  # level badges around the landing spot
     digits: int | None  # digits in the level badge
     named: str | None = None  # the vision model's answer, arrives a moment later
@@ -32,11 +31,7 @@ class Evidence:
 
 def scores(evidence: Evidence, deck: list[str], levels: dict[str, int]) -> dict[str, float]:
     """Log score per deck card for one play, 0 means no opinion."""
-    per_card: Counter = Counter()
-    for unit, weight in evidence.votes.items():
-        for name in unit_cards().get(unit, []):
-            if name in deck:
-                per_card[name] += weight * (1.0 if card(name).units[0] == unit else 0.6)
+    per_card = Counter({n: v for n, v in evidence.votes.items() if n in deck})
     total = sum(per_card.values())
     out = {}
     for name in deck:

@@ -6,6 +6,8 @@ try these before falling back to the rough role matching in cards.answers.
 
 from __future__ import annotations
 
+from clash_helper.board import LANE_COL, row_of, tile
+
 # where an answer goes, filled with the lane and the threat at call time
 SPOTS = {
     "pull": "center, 3 tiles from the river",
@@ -14,6 +16,7 @@ SPOTS = {
     "path": "{lane} lane, in its path",
     "behind": "behind your {lane} tower",
     "bridge": "{lane} bridge as it crosses",
+    "back": "behind your king tower, {lane} side",
 }
 
 PULL_BUILDINGS = [("Cannon", "pull"), ("Tesla", "pull"), ("Inferno Tower", "pull"), ("Bomb Tower", "pull"), ("Tombstone", "pull"), ("Goblin Cage", "pull")]
@@ -96,3 +99,22 @@ def answers_for(threat: str) -> list[tuple[str, str]]:
 
 def spot(kind: str, lane: str, threat: str) -> str:
     return SPOTS[kind].format(lane=lane, threat=threat)
+
+
+def spot_xy(kind: str, lane: str, threat_at: tuple[int, int] | None = None) -> tuple[int, int]:
+    """Where on the screen a spot is, in canonical pixels."""
+    col = LANE_COL[lane]
+    if kind == "on" and threat_at:
+        return threat_at
+    if kind == "path" and threat_at:
+        # a few tiles ahead of the threat on its way down the lane
+        return tile(col, max(1, min(14, row_of(threat_at[1]) - 3)))
+    return {
+        "pull": tile(8.5, 11),
+        "front": tile(col, 10),
+        "behind": tile(col, 3),
+        "bridge": tile(col, 13),
+        "back": tile(6 if lane == "left" else 11, 0),
+        "path": tile(col, 11),
+        "on": tile(col, 10),
+    }[kind]
