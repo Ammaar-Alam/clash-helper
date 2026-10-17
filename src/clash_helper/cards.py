@@ -59,6 +59,7 @@ ROLES: dict[str, str] = {
     "Giant Snowball": "small",
     "Goblin Barrel": "win swarm",
     "Goblin Cage": "",
+    "Goblin Curse": "small",
     "Goblin Demolisher": "splash",
     "Goblin Drill": "win",
     "Goblin Gang": "aa swarm",
@@ -128,6 +129,7 @@ ROLES: dict[str, str] = {
     "Tombstone": "",
     "Tornado": "small",
     "Valkyrie": "splash",
+    "Vines": "small",
     "Void": "big",
     "Wall Breakers": "win",
     "Witch": "aa splash",
@@ -179,6 +181,30 @@ UNITS: dict[str, list[str]] = {
 }
 
 
+# how many level badges a deploy shows, anything missing is one unit
+COUNTS: dict[str, int] = {
+    "Archers": 2,
+    "Bats": 5,
+    "Barbarians": 5,
+    "Elite Barbarians": 2,
+    "Goblin Gang": 6,
+    "Goblins": 4,
+    "Guards": 3,
+    "Minion Horde": 6,
+    "Minions": 3,
+    "Rascals": 3,
+    "Royal Hogs": 4,
+    "Royal Recruits": 6,
+    "Skeleton Army": 15,
+    "Skeleton Dragons": 2,
+    "Skeletons": 3,
+    "Spear Goblins": 3,
+    "Three Musketeers": 3,
+    "Wall Breakers": 2,
+    "Zappies": 3,
+}
+
+
 @dataclass(frozen=True)
 class Card:
     name: str
@@ -196,6 +222,10 @@ class Card:
     @property
     def building(self) -> bool:
         return self.type == "building"
+
+    @property
+    def count(self) -> int:
+        return 0 if self.spell else COUNTS.get(self.name, 1)
 
     @property
     def units(self) -> list[str]:

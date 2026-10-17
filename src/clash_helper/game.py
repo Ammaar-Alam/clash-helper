@@ -11,6 +11,7 @@ import numpy as np
 from clash_helper import api, vision
 from clash_helper.advisor import Call, Threat, advise
 from clash_helper.cards import card
+from clash_helper.hand import HandReader
 from clash_helper.identify import Detector, name_deploy
 from clash_helper.tracker import UNKNOWN, Opponent
 
@@ -18,6 +19,8 @@ VOTE_FRAMES = 8  # frames after a deploy timer that vote on the unit
 CLOCK_MERGE = 70  # px, one deploy timer seen over several frames
 CLOCK_SECONDS = 1.6
 MATCH_GONE_SECONDS = 3.0
+LOOKUP_EVERY = 1.0  # seconds between name reads while the intro fades
+LOOKUP_WINDOW = 25.0
 
 
 @dataclass
@@ -28,7 +31,12 @@ class Pending:
     multiplier: float
     votes: Counter = field(default_factory=Counter)
     frames: int = 0
-    most_units: int = 0
+    counts: list[int] = field(default_factory=list)
+
+    @property
+    def units(self) -> int:
+        """Typical badge count around the landing spot, robust to passers-by."""
+        return sorted(self.counts)[len(self.counts) // 2] if self.counts else 0
 
 
 @dataclass
@@ -50,7 +58,17 @@ class Match:
     def __init__(self, detector: Detector | None = None, lookup: bool = True) -> None:
         self.detector = detector or Detector()
         self.lookup = lookup
+        self.hand_reader: HandReader | None = None
         self._reset()
+        tag = api.setting("CR_PLAYER_TAG")
+        if lookup and tag and api.token():
+            threading.Thread(target=self._load_my_deck, args=(tag,), daemon=True).start()
+
+    def _load_my_deck(self, tag: str) -> None:
+        try:
+            self.hand_reader = HandReader(api.player(tag)["currentDeck"])
+        except (api.ApiError, OSError) as error:
+            print(f"could not load your deck: {error}", flush=True)
 
     def _reset(self) -> None:
         self.opp = Opponent()
@@ -61,27 +79,40 @@ class Match:
         self.threat: Threat | None = None
         self.answered = True
         self.my_elixir = 5
-        self.looked_up = False
+        self.lookup_state = "todo"  # todo, running, done
+        self.last_ocr = -10.0
         self.my_hand: list = [None] * 4
+        self.next_mine: str | None = None
         self.played = 0
+        self.debug: list = []
         self.last_play = ""
 
-    def _lookup_opponent(self, frame: np.ndarray) -> None:
-        lines = vision.read_text(frame[95:200, 55:320])
-        words = [t for t in lines if not t.replace(" ", "").isdigit()]
-        if len(words) < 2:
-            return  # no clan on screen, nothing to search by
-        name, clan = words[0], words[1]
+    def _lookup_opponent(self, frame: np.ndarray, now: float) -> None:
+        """Read their name and clan, then fetch the deck they are using right now."""
+        if now - self.last_ocr < LOOKUP_EVERY or now - (self.started or now) > LOOKUP_WINDOW:
+            return
+        self.last_ocr = now
+        # name, clan, trophies, the clan line is missing for clanless players
+        lines = [t for t in vision.read_text(frame[95:200, 55:320]) if not t.replace(" ", "").isdigit()]
+        if len(lines) < 2:
+            return
+        name, clan = lines[0], lines[1]
+        if clan.lower() == "no clan":
+            # the API has no name search, a clanless player cannot be found
+            self.lookup_state = "done"
+            return
+        self.lookup_state = "running"
 
         def run() -> None:
             try:
                 found = api.find_player(name, clan)
             except api.ApiError as error:
                 print(f"opponent lookup failed: {error}", flush=True)
-                return
+                found = None
             if found and found.get("currentDeck"):
                 self.opp.preload([c["name"] for c in found["currentDeck"]])
                 print(f"opponent deck: {', '.join(self.opp.deck)}", flush=True)
+            self.lookup_state = "done"
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -94,17 +125,21 @@ class Match:
             self.started = now
             self.opp.last_time = now
         self.last_seen = now
-        if self.lookup and not self.looked_up and api.token():
-            self.looked_up = True
-            self._lookup_opponent(frame)
+        if self.lookup and self.lookup_state == "todo" and api.token():
+            self._lookup_opponent(frame, now)
 
         multiplier = vision.elixir_multiplier(frame)
         self.opp.tick(now, multiplier)
         self._track_my_elixir(vision.own_elixir(frame), now)
+        if self.hand_reader:
+            hand, upcoming = self.hand_reader.read(frame)
+            # a card mid-slide or being dragged reads as None, keep the last good name
+            self.my_hand = [new or old for new, old in zip(hand, self.my_hand)]
+            self.next_mine = upcoming or self.next_mine
 
         for x, y in vision.deploy_clocks(frame):
-            if y > vision.ARENA_BOTTOM - 120:
-                continue  # emote bubbles over the king tower look like timers
+            if y > vision.ARENA_BOTTOM - 120 or x > 615:
+                continue  # emote bubbles and the crown counter look like timers
             if any(abs(x - cx) + abs(y - cy) < CLOCK_MERGE and now - t < CLOCK_SECONDS for cx, cy, t in self.clocks):
                 continue
             self.clocks.append((x, y, now))
@@ -125,8 +160,9 @@ class Match:
         badges = vision.level_badges(frame, enemy=True)
         for p in self.pending:
             p.frames += 1
-            near_badges = [b for b in badges if abs(b[0] - p.x) < 110 and -80 < b[1] - p.y < 140]
-            p.most_units = max(p.most_units, len(near_badges))
+            if p.frames >= 2:
+                # the units need a moment to drop in and show their badges
+                p.counts.append(sum(1 for bx, by in badges if abs(bx - p.x) < 75 and -90 < by - p.y < 60))
             for name, conf, x, top, bottom in units:
                 if not (abs(x - p.x) < 90 and -60 < bottom - p.y < 110):
                     continue
@@ -138,11 +174,12 @@ class Match:
             self._land(p)
 
     def _land(self, p: Pending) -> None:
-        candidates = self.opp.deck if self.opp.deck_complete else None
-        if candidates and self.opp.hand:
-            # a complete cycle says which 4 cards they could have played
-            candidates = self.opp.hand + self.opp.maybe
-        name = name_deploy(p.votes, candidates, p.most_units) or UNKNOWN
+        candidates = None
+        if self.opp.deck_complete:
+            # a card still waiting in their queue cannot have been played
+            candidates = [c for c in self.opp.deck if c not in self.opp.queue]
+        name = name_deploy(p.votes, candidates, p.units) or UNKNOWN
+        self.debug.append((p, dict(p.votes), name))
         played = card(name) if name != UNKNOWN else None
         cost = played.cost if played else 3
         self.opp.play(name, cost, p.time, p.multiplier, champion=bool(played and played.has("champion")))
@@ -153,7 +190,8 @@ class Match:
             self.answered = False
 
     def _view(self, now: float) -> View:
-        call = advise(now, self.my_hand, self.my_elixir, self.opp, self.threat, self.answered)
+        hand = [card(n) if n else None for n in self.my_hand]
+        call = advise(now, hand, self.my_elixir, self.opp, self.threat, self.answered)
         return View(
             in_match=True,
             call=call,

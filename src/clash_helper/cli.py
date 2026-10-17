@@ -60,7 +60,7 @@ def replay(path: Path, fps: float) -> None:
     """Print every opponent play and call change from a recorded match."""
     from clash_helper.game import Match
 
-    match = Match(lookup=False)
+    match = Match()
     last_call = ""
     plays = 0
     for frame, now in video_frames(path, fps):

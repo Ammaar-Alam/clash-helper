@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import urllib.error
@@ -13,16 +14,21 @@ BASE = "https://proxy.royaleapi.dev/v1"
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def token() -> str | None:
-    if os.environ.get("CR_API_TOKEN"):
-        return os.environ["CR_API_TOKEN"]
+def setting(name: str) -> str | None:
+    """A value from the environment or the repo .env file."""
+    if os.environ.get(name):
+        return os.environ[name]
     env = ROOT / ".env"
     if env.exists():
         for line in env.read_text().splitlines():
             key, _, value = line.partition("=")
-            if key.strip() == "CR_API_TOKEN" and value.strip():
+            if key.strip() == name and value.strip():
                 return value.strip()
     return None
+
+
+def token() -> str | None:
+    return setting("CR_API_TOKEN")
 
 
 class ApiError(RuntimeError):
@@ -35,14 +41,18 @@ def get(path: str, **params) -> dict:
         raise ApiError("CR_API_TOKEN is missing, add it to .env")
     url = BASE + path + ("?" + urllib.parse.urlencode(params) if params else "")
     request = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"})
-    try:
-        with urllib.request.urlopen(request, timeout=8) as response:
-            return json.load(response)
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode(errors="replace")[:200]
-        raise ApiError(f"{error.code} on {path}: {detail}") from error
-    except urllib.error.URLError as error:
-        raise ApiError(f"network error on {path}: {error.reason}") from error
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=8) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode(errors="replace")[:200]
+            raise ApiError(f"{error.code} on {path}: {detail}") from error
+        except (urllib.error.URLError, http.client.IncompleteRead, TimeoutError) as error:
+            # the relay sometimes cuts long replies short
+            if attempt == 2:
+                raise ApiError(f"network error on {path}: {error}") from error
+    raise AssertionError("unreachable")
 
 
 def tag_path(tag: str) -> str:

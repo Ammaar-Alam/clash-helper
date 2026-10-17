@@ -77,10 +77,10 @@ class Opponent:
         return [card for card in self.deck if card not in hand and card not in waiting]
 
     def preload(self, cards: list[str]) -> None:
-        """Their full deck from the API, order unknown."""
-        for card in cards:
-            if card not in self.deck and len(self.deck) < DECK_SIZE:
-                self.deck.append(card)
+        """Their full deck from the API, which overrules anything guessed so far."""
+        self.deck = list(cards[:DECK_SIZE])
+        self.plays = [p if p in self.deck else UNKNOWN for p in self.plays]
+        self.benched = [b for b in self.benched if b in self.deck]
 
     @property
     def next_card(self) -> str | None:

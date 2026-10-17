@@ -14,7 +14,7 @@ BAR_EMPTY_X, BAR_FULL_X = 180, 640
 # double elixir drop under the timer
 BADGE_X2 = (slice(160, 240), slice(580, 664))
 # hand cards then the small next card, as y0, y1, x0, x1
-HAND_SLOTS = [(1212, 1340, 150 + i * 124, 265 + i * 124) for i in range(4)]
+HAND_SLOTS = [(1210, 1355, 152 + i * 124, 268 + i * 124) for i in range(4)]
 NEXT_SLOT = (1325, 1395, 35, 90)
 
 
@@ -24,7 +24,7 @@ def _hsv(frame: np.ndarray) -> np.ndarray:
 
 def _magenta(hsv: np.ndarray) -> np.ndarray:
     h, s, v = hsv[..., 0], hsv[..., 1], hsv[..., 2]
-    return (h > 140) & (h < 165) & (s > 120) & (v > 150)
+    return (h > 140) & (h < 168) & (s > 70) & (v > 150)
 
 
 def own_elixir(frame: np.ndarray) -> int:

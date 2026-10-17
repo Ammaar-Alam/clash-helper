@@ -71,25 +71,24 @@ def unit_cards() -> dict[str, list[str]]:
     return mapping
 
 
-def swarm_size(name: str) -> int:
-    return {"Skeleton Army": 15, "Minion Horde": 6, "Goblin Gang": 6, "Royal Recruits": 6, "Barbarians": 5}.get(name, 3)
-
-
 def name_deploy(votes: Counter, candidates: list[str] | None, units_seen: int) -> str | None:
-    """Most likely card for one deploy, None when the detector saw nothing usable."""
+    """Most likely card for one deploy, None when nothing points anywhere."""
+    pool = candidates if candidates is not None else list(all_cards())
     scores: Counter = Counter()
     for unit, weight in votes.items():
         for name in unit_cards().get(unit, []):
-            if candidates is not None and name not in candidates:
-                continue
-            # the card whose main unit this is beats cards that only spawn it
-            main = card(name).units[0] == unit
-            scores[name] += weight * (1.0 if main else 0.6)
+            if name in pool:
+                # the card whose main unit this is beats cards that only spawn it
+                scores[name] += weight * (1.0 if card(name).units[0] == unit else 0.6)
+    if candidates is not None and units_seen >= 2:
+        # new skins fool the detector but the badge count still tells swarms apart
+        for name in pool:
+            if card(name).count == units_seen:
+                scores[name] += 1.5
     if not scores:
         return None
-    best = scores.most_common(3)
-    # several cards share one unit, the unit count separates them
-    shared = [n for n, s in best if s >= best[0][1] * 0.6]
-    if len(shared) > 1:
-        return min(shared, key=lambda n: abs(swarm_size(n) - units_seen) if card(n).has("swarm") else abs(1 - units_seen))
+    best = scores.most_common(2)
+    if len(best) > 1 and best[1][1] >= best[0][1] * 0.6:
+        # close call, the unit count decides
+        return min((n for n, _ in best), key=lambda n: abs(card(n).count - max(units_seen, 1)))
     return best[0][0]

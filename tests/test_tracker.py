@@ -87,3 +87,11 @@ def test_unknown_play_keeps_hand_uncertain():
     assert opp.hand == []
     assert sorted(opp.maybe) == sorted(DECK[:5])
     assert "?" not in opp.deck
+
+
+def test_preload_overrules_wrong_guesses():
+    opp = Opponent()
+    play_all(opp, ["hog", "giant"])
+    opp.preload(DECK)
+    assert opp.plays == ["hog", "?"]
+    assert opp.deck == DECK
