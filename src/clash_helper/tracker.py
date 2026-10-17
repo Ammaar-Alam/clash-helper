@@ -39,6 +39,9 @@ class Opponent:
         self.elixir = max(self.elixir, cost) - cost
         if card != UNKNOWN and card not in self.deck and len(self.deck) < DECK_SIZE:
             self.deck.append(card)
+        if card in self.queue:
+            # it could only come back if plays we never saw pushed it out, spells mostly
+            self.plays += [UNKNOWN] * (self.queue.index(card) + 1)
         if champion:
             self.benched.append(card)
         else:

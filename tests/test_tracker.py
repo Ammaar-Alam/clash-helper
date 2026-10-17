@@ -95,3 +95,12 @@ def test_preload_overrules_wrong_guesses():
     opp.preload(DECK)
     assert opp.plays == ["hog", "?"]
     assert opp.deck == DECK
+
+
+def test_card_back_too_early_means_missed_plays():
+    opp = Opponent()
+    play_all(opp, DECK)
+    # cannon is second in the queue, so two plays went unseen
+    opp.play("cannon", 3, now=20)
+    assert opp.plays[-3:] == ["?", "?", "cannon"]
+    assert opp.hand == []

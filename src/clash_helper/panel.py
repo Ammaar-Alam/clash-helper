@@ -21,6 +21,7 @@ class Panel:
         self.root.geometry(f"{WIDTH}x{height}+{max(0, x)}+{y}")
         self.root.configure(bg=BG)
         self.root.attributes("-topmost", True)
+        self.headings: list[tk.Label] = []
 
         pad = {"padx": 18, "anchor": "w"}
         self.action = tk.Label(self.root, font=(FONT, 22, "bold"), fg=TEXT, bg=BG, wraplength=WIDTH - 36, justify="left")
@@ -47,7 +48,9 @@ class Panel:
         self.root.after(100, self._poll)
 
     def _heading(self, text: str) -> None:
-        tk.Label(self.root, text=text.upper(), font=(FONT, 11, "bold"), fg=ACCENT, bg=BG).pack(padx=18, anchor="w")
+        label = tk.Label(self.root, text=text.upper(), font=(FONT, 11, "bold"), fg=BG, bg=BG)
+        label.pack(padx=18, anchor="w")
+        self.headings.append(label)
 
     def _poll(self) -> None:
         view = None
@@ -62,6 +65,9 @@ class Panel:
         self.reason.config(text=view.call.reason)
         for child in self.hand.winfo_children():
             child.destroy()
+        for heading in self.headings:
+            # headings blend into the background until there is something under them
+            heading.config(fg=ACCENT if view.in_match else BG)
         if not view.in_match:
             self.next.config(text="")
             self.maybe.config(text="")

@@ -48,8 +48,14 @@ def place_window() -> Window | None:
     end tell
     """
     subprocess.run(["osascript", "-e", script], capture_output=True, check=False)
-    time.sleep(0.8)
-    return find_window()
+    # the window drops out of the list while it animates to the new size
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        time.sleep(0.3)
+        window = find_window()
+        if window is not None:
+            return window
+    return None
 
 
 def grab(window: Window) -> np.ndarray | None:

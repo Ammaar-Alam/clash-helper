@@ -75,7 +75,8 @@ def name_deploy(
     votes: Counter, candidates: list[str] | None, units_seen: int, unlikely: set[str] = frozenset()
 ) -> str | None:
     """Most likely card for one deploy, None when nothing points anywhere."""
-    pool = candidates if candidates is not None else list(all_cards())
+    # only troops and buildings land with a deploy timer
+    pool = [n for n in (candidates if candidates is not None else all_cards()) if not card(n).spell]
     scores: Counter = Counter()
     for unit, weight in votes.items():
         for name in unit_cards().get(unit, []):
@@ -92,8 +93,7 @@ def name_deploy(
             scores[name] *= 0.35
     if not scores:
         return None
-    best = scores.most_common(2)
-    if len(best) > 1 and best[1][1] >= best[0][1] * 0.6:
-        # close call, the unit count decides
-        return min((n for n, _ in best), key=lambda n: abs(card(n).count - max(units_seen, 1)))
-    return best[0][0]
+    top = scores.most_common(1)[0][1]
+    close = [n for n, score in scores.items() if score >= top * 0.6]
+    # close call, the unit count decides, then the score
+    return min(close, key=lambda n: (abs(card(n).count - max(units_seen, 1)), -scores[n]))
