@@ -23,13 +23,18 @@ def _art(image: np.ndarray) -> np.ndarray:
     return cv2.equalizeHist(cv2.resize(gray, SIZE, interpolation=cv2.INTER_AREA))
 
 
-def _icon(url: str) -> np.ndarray:
+def icon_path(url: str) -> Path:
+    """Card art from the API, downloaded once."""
     # cards/300/x.png and cardevolutions/300/x.png share a file name
     path = ICONS / url.split("/")[-3] / url.split("/")[-1]
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
         urllib.request.urlretrieve(url, path)
-    rgba = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+    return path
+
+
+def _icon(url: str) -> np.ndarray:
+    rgba = cv2.imread(str(icon_path(url)), cv2.IMREAD_UNCHANGED)
     if rgba.shape[2] == 3:
         return rgba
     # the art sits in a transparent canvas, keep only the card itself

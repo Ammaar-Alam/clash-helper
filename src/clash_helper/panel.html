@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=Schibsted+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: oklch(0.165 0.012 290);
+    --raise: oklch(0.205 0.014 290);
+    --line: oklch(0.29 0.014 290);
+    --text: oklch(0.95 0.008 290);
+    --muted: oklch(0.70 0.016 290);
+    --faint: oklch(0.50 0.016 290);
+    --elixir: oklch(0.66 0.22 332);
+    --elixir-empty: oklch(0.27 0.03 320);
+    --urgent: oklch(0.72 0.18 35);
+
+    --display: "Big Shoulders Display", "Avenir Next Condensed", sans-serif;
+    --body: "Schibsted Grotesk", "Avenir Next", sans-serif;
+
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 12px;
+    --space-lg: 16px;
+    --space-xl: 24px;
+    --space-2xl: 32px;
+    --space-3xl: 48px;
+
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  * { box-sizing: border-box; margin: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font: 500 14px/1.5 var(--body);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    cursor: default;
+    overflow: hidden;
+  }
+
+  .panel {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-2xl) var(--space-xl) var(--space-xl);
+  }
+
+  .label {
+    font: 600 11px/1 var(--body);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  /* who we are playing, quiet line above the call */
+  .meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--space-md);
+    min-height: 14px;
+  }
+  .meta .opponent { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta .opponent b { color: var(--text); font-weight: 600; }
+
+  /* the call owns the top of the panel */
+  .call {
+    margin-top: var(--space-xl);
+    min-height: 168px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+  .call h1 {
+    font: 800 42px/0.98 var(--display);
+    letter-spacing: 0.005em;
+    text-wrap: balance;
+  }
+  .call p {
+    margin-top: var(--space-md);
+    font-size: 16px;
+    line-height: 1.4;
+    color: var(--muted);
+    text-wrap: pretty;
+  }
+  .call p::first-letter { text-transform: uppercase; }
+  .call.urgent h1 { color: var(--urgent); }
+  .call.urgent .label { color: var(--urgent); }
+  .call .tag {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+    height: 11px;
+  }
+  .call .tag::before {
+    content: "";
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+    opacity: 0;
+  }
+  .call.urgent .tag::before { opacity: 1; color: var(--urgent); animation: pulse 1.1s var(--ease) infinite; }
+  .enter { animation: rise 240ms var(--ease) both; }
+
+  /* elixir meters, the one place magenta lives */
+  .elixir {
+    display: grid;
+    gap: var(--space-md);
+    padding: var(--space-lg) 0;
+    border-block: 1px solid var(--line);
+  }
+  .meter {
+    display: grid;
+    grid-template-columns: 44px 1fr 34px;
+    align-items: center;
+    gap: var(--space-md);
+  }
+  .pips { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; }
+  .pip {
+    height: 10px;
+    border-radius: 2px;
+    background: var(--elixir-empty);
+    overflow: hidden;
+  }
+  .pip i {
+    display: block;
+    height: 100%;
+    width: calc(var(--fill) * 100%);
+    background: var(--elixir);
+    transition: width 300ms var(--ease);
+  }
+  .meter .value {
+    font: 800 24px/1 var(--display);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .meter.mine .pip i { background: oklch(0.80 0.06 332); }
+
+  /* their hand, art carries the color */
+  .hand { padding-top: var(--space-xl); display: grid; gap: var(--space-md); }
+  .hand header { display: flex; justify-content: space-between; align-items: baseline; }
+  .hand header .label:last-child { color: var(--muted); letter-spacing: 0.04em; text-transform: none; font-weight: 500; font-size: 12px; }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-sm); }
+  .card {
+    position: relative;
+    aspect-ratio: 5 / 6.3;
+    border-radius: 7px;
+    overflow: visible;
+  }
+  .card img {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    display: block;
+    filter: drop-shadow(0 1px 0 oklch(0.1 0.01 290));
+  }
+  .card .cost {
+    position: absolute;
+    left: 50%; bottom: -7px;
+    transform: translateX(-50%);
+    min-width: 20px; height: 20px;
+    padding: 0 5px;
+    border-radius: 10px;
+    background: var(--elixir);
+    color: oklch(0.98 0.01 330);
+    font: 800 14px/20px var(--display);
+    text-align: center;
+    box-shadow: 0 0 0 2px var(--bg);
+  }
+  .card.unknown {
+    border: 1px dashed var(--line);
+    display: grid; place-items: center;
+    color: var(--faint);
+    font: 800 22px/1 var(--display);
+  }
+  .card.unknown::after { content: "?"; }
+  .card.entering { animation: rise 260ms var(--ease) both; }
+
+  .maybe { display: none; align-items: center; gap: var(--space-sm); margin-top: var(--space-sm); }
+  .maybe.shown { display: flex; }
+  .maybe .row { display: flex; gap: 4px; }
+  .maybe img { width: 24px; opacity: 0.6; }
+
+  /* the queue they cycle back from, front first */
+  .cycle { padding-top: var(--space-xl); display: grid; gap: var(--space-md); }
+  .queue { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-sm); }
+  .slot { display: grid; justify-items: center; gap: 6px; }
+  .slot .card { width: 46px; }
+  .slot:not(:first-child) .card img { opacity: 0.55; }
+  .slot span { font: 600 11px/1 var(--body); color: var(--faint); font-variant-numeric: tabular-nums; }
+  .slot:first-child span { color: var(--text); }
+
+  /* between matches */
+  .idle { display: none; margin-top: var(--space-3xl); }
+  .idle h1 { font: 800 56px/0.95 var(--display); color: var(--text); }
+  .idle p { margin-top: var(--space-md); color: var(--muted); font-size: 16px; }
+  .panel.waiting .idle { display: block; }
+  .panel.waiting .live { display: none; }
+  .live { display: contents; }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .enter, .card.entering, .call.urgent .tag::before { animation: none; }
+    .pip i { transition: none; }
+  }
+</style>
+</head>
+<body>
+<main class="panel waiting" id="panel">
+  <div class="meta">
+    <span class="label">Clash Helper</span>
+    <span class="opponent" id="opponent"></span>
+  </div>
+
+  <section class="idle">
+    <h1>Ready</h1>
+    <p>Start a battle on your phone.</p>
+  </section>
+
+  <div class="live">
+    <section class="call" id="call">
+      <div class="tag label" id="tag"></div>
+      <h1 id="action"></h1>
+      <p id="reason"></p>
+    </section>
+
+    <section class="elixir" aria-label="Elixir">
+      <div class="meter" id="them">
+        <span class="label">Them</span>
+        <div class="pips"></div>
+        <span class="value"></span>
+      </div>
+      <div class="meter mine" id="you">
+        <span class="label">You</span>
+        <div class="pips"></div>
+        <span class="value"></span>
+      </div>
+    </section>
+
+    <section class="hand">
+      <header>
+        <span class="label">Their hand</span>
+        <span class="label" id="handNote"></span>
+      </header>
+      <div class="cards" id="hand"></div>
+      <div class="maybe" id="maybeRow">
+        <span class="label">Could be</span>
+        <div class="row" id="maybe"></div>
+      </div>
+    </section>
+
+    <section class="cycle">
+      <span class="label">Coming back</span>
+      <div class="queue" id="queue"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+  const art = {};
+  const $ = (id) => document.getElementById(id);
+  let lastCall = "";
+  let lastHand = "";
+  let lastQueue = "";
+
+  for (const id of ["them", "you"]) {
+    $(id).querySelector(".pips").innerHTML = "<div class='pip'><i></i></div>".repeat(10);
+  }
+
+  function meter(id, value) {
+    const pips = $(id).querySelectorAll(".pip i");
+    pips.forEach((pip, i) => pip.style.setProperty("--fill", Math.max(0, Math.min(1, value - i))));
+    $(id).querySelector(".value").textContent = Math.floor(value);
+  }
+
+  function cardTile(name, cost, entering) {
+    const tile = document.createElement("div");
+    if (!name || !art[name]) {
+      tile.className = "card unknown";
+      if (name) tile.title = name;
+      return tile;
+    }
+    tile.className = "card" + (entering ? " entering" : "");
+    tile.title = name;
+    tile.innerHTML = `<img src="${art[name]}" alt="${name}">` + (cost ? `<span class="cost">${cost}</span>` : "");
+    return tile;
+  }
+
+  function img(name) {
+    if (!name || !art[name]) {
+      const blank = document.createElement("span");
+      blank.className = "blank";
+      return blank;
+    }
+    const el = document.createElement("img");
+    el.src = art[name];
+    el.alt = el.title = name;
+    return el;
+  }
+
+  window.render = (s) => {
+    Object.assign(art, s.art || {});
+    $("panel").className = "panel" + (s.inMatch ? "" : " waiting");
+    $("opponent").innerHTML = s.opponent ? `vs <b>${s.opponent}</b>` : "";
+    if (!s.inMatch) { lastCall = ""; lastHand = ""; lastQueue = ""; return; }
+
+    const call = s.action + "|" + s.reason + "|" + s.urgent;
+    if (call !== lastCall) {
+      lastCall = call;
+      $("call").className = "call" + (s.urgent ? " urgent" : "");
+      $("tag").textContent = s.urgent ? "Now" : "Next move";
+      for (const id of ["action", "reason"]) {
+        const el = $(id);
+        el.textContent = s[id];
+        el.classList.remove("enter");
+        void el.offsetWidth;
+        el.classList.add("enter");
+      }
+    }
+
+    meter("them", s.them);
+    meter("you", s.you);
+
+    const hand = JSON.stringify([s.hand, s.maybe]);
+    if (hand !== lastHand) {
+      const before = new Set(JSON.parse(lastHand || "[[]]")[0]);
+      lastHand = hand;
+      const cards = $("hand");
+      cards.replaceChildren();
+      for (let i = 0; i < 4; i++) {
+        const name = s.hand[i];
+        cards.append(cardTile(name, name && s.costs[name], name && !before.has(name)));
+      }
+      $("handNote").textContent = s.hand.length === 4 ? "exact" : s.deckKnown ? "deck known" : "learning";
+      $("maybe").replaceChildren(...s.maybe.map(img));
+      $("maybeRow").classList.toggle("shown", s.maybe.length > 0 && s.hand.length < 4);
+    }
+
+    const queue = JSON.stringify(s.queue);
+    if (queue !== lastQueue) {
+      lastQueue = queue;
+      $("queue").replaceChildren(...s.queue.map((name, i) => {
+        const slot = document.createElement("div");
+        slot.className = "slot";
+        slot.append(cardTile(name, null, false));
+        const caption = document.createElement("span");
+        caption.textContent = i === 0 ? "next" : `in ${i + 1}`;
+        slot.append(caption);
+        return slot;
+      }));
+    }
+  };
+</script>
+</body>
+</html>

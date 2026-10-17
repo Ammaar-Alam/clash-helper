@@ -15,6 +15,7 @@ dependencies = [
   "pyobjc-framework-Quartz>=10.0",
   "pyobjc-framework-Cocoa>=10.0",
   "pyobjc-framework-Vision>=10.0",
+  "pywebview>=5.0",
 ]
 
 [project.optional-dependencies]
@@ -27,7 +28,7 @@ clash-helper = "clash_helper.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-clash_helper = ["data/*.json", "data/cards/*.png"]
+clash_helper = ["data/*.json", "data/*.png", "panel.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

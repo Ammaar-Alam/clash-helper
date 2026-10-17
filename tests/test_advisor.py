@@ -58,3 +58,8 @@ def test_unknown_hand_still_gives_timing():
     opp.play("Golem", 8, now=1)
     call = advise(2, [None] * 4, 7, opp, None, answered=True)
     assert call.action == "Attack right"
+
+
+def test_cheap_unit_is_left_to_the_tower():
+    call = advise(10, HAND, 5, Opponent(), Threat("Fire Spirit", 500, 9), answered=False)
+    assert not call.urgent

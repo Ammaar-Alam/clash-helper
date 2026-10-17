@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import queue
 import threading
 from collections import Counter
 from dataclasses import dataclass, field
 
 import numpy as np
 
-from clash_helper import api, vision
+from clash_helper import api, namer, vision
 from clash_helper.advisor import Call, Threat, advise
-from clash_helper.cards import card
+from clash_helper.cards import all_cards, card
+from clash_helper.decode import Evidence, decode
 from clash_helper.hand import HandReader
 from clash_helper.identify import Detector, name_deploy
 from clash_helper.tracker import UNKNOWN, Opponent
@@ -35,6 +37,7 @@ class Pending:
     frames: int = 0
     counts: list[int] = field(default_factory=list)
     widths: list[int] = field(default_factory=list)
+    shots: list[np.ndarray] = field(default_factory=list)  # frames 0.4 s apart for the vision model
 
     @property
     def units(self) -> int:
@@ -64,6 +67,8 @@ class View:
     my_elixir: int = 0
     deck_known: bool = False
     plays: list[str] = field(default_factory=list)
+    queue: list[str | None] = field(default_factory=list)
+    opponent: str = ""
 
 
 class Match:
@@ -93,10 +98,13 @@ class Match:
         self.my_elixir = 5
         self.lookup_state = "todo"  # todo, running, done
         self.levels: dict[str, int] = {}
+        self.opponent = ""
         self.last_ocr = -10.0
         self.my_hand: list = [None] * 4
         self.next_mine: str | None = None
         self.played = 0
+        self.events: list[tuple[Pending, Evidence]] = []
+        self.answers: queue.Queue[tuple[Pending, str | None]] = queue.Queue()
         self.debug: list = []
         self.last_play = ""
 
@@ -110,6 +118,7 @@ class Match:
         if len(lines) < 2:
             return
         name, clan = lines[0], lines[1]
+        self.opponent = name
         if clan.lower() == "no clan":
             # the API has no name search, a clanless player cannot be found
             self.lookup_state = "done"
@@ -143,6 +152,7 @@ class Match:
         if self.lookup and self.lookup_state == "todo" and api.token():
             self._lookup_opponent(frame, now)
 
+        self._take_answers()
         multiplier = vision.elixir_multiplier(frame)
         self.opp.tick(now, multiplier)
         self._track_my_elixir(vision.own_elixir(frame), now)
@@ -175,6 +185,8 @@ class Match:
         badges = vision.level_badges(frame, enemy=True)
         for p in self.pending:
             p.frames += 1
+            if p.frames % 2 == 1:
+                p.shots.append(frame)
             if p.frames >= 2:
                 # the units need a moment to drop in and show their badges
                 near = [w for bx, by, w in badges if abs(bx - p.x) < 75 and -90 < by - p.y < 60]
@@ -192,21 +204,58 @@ class Match:
             self._land(p)
 
     def _land(self, p: Pending) -> None:
-        candidates = self.opp.deck if self.opp.deck_complete else None
-        # a card waiting in their queue cannot be played, unless an earlier name was wrong
-        unlikely = set(self.opp.queue)
-        if p.digits and self.levels:
-            unlikely |= {n for n, level in self.levels.items() if len(str(level)) != p.digits}
-        name = name_deploy(p.votes, candidates, p.units, unlikely) or UNKNOWN
-        self.debug.append((p, dict(p.votes), name))
-        played = card(name) if name != UNKNOWN else None
-        cost = played.cost if played else 3
-        self.opp.play(name, cost, p.time, p.multiplier, champion=bool(played and played.has("champion")))
+        evidence = Evidence(p.votes, p.units, p.digits)
+        self.events.append((p, evidence))
+        self._rename()
         self.played += 1
-        self.last_play = name
+        self.last_play = self.debug[-1][2]
+        played = card(self.last_play) if self.last_play != UNKNOWN else None
         if played and not played.spell and not played.building:
-            self.threat = Threat(name, p.x, p.time)
+            self.threat = Threat(self.last_play, p.x, p.time)
             self.answered = False
+        if api.setting("GEMINI_API_KEY") and p.shots:
+            if self.opp.deck_complete:
+                options = {n: self.levels.get(n) for n in self.opp.deck}
+            else:
+                options = {n: None for n, c in all_cards().items() if not c.spell}
+            image = namer.strip(p.shots, p.x, p.y)
+            threading.Thread(target=lambda: self.answers.put((p, namer.name_card(image, options))), daemon=True).start()
+
+    def _take_answers(self) -> None:
+        changed = False
+        while not self.answers.empty():
+            p, answer = self.answers.get_nowait()
+            for q, evidence in self.events:
+                if q is p and answer:
+                    evidence.named = answer
+                    changed = True
+        if changed:
+            self._rename()
+            if self.threat and self.events and self.threat.time == self.events[-1][0].time:
+                self.threat = Threat(self.debug[-1][2], self.threat.x, self.threat.time)
+
+    def _rename(self) -> None:
+        """Best names for every play so far from all evidence."""
+        if self.opp.deck_complete:
+            # with their 8 cards known, the cycle lets later plays fix earlier names
+            names = decode([e for _, e in self.events], self.opp.deck, self.levels)
+        else:
+            names = [
+                e.named or name_deploy(e.votes, None, e.units) or UNKNOWN
+                for _, e in self.events
+            ]
+        self._replay(names)
+
+    def _replay(self, names: list[str]) -> None:
+        """Rebuild the opponent from the start with the current best names."""
+        opp = Opponent(last_time=self.started or 0.0)
+        if self.opp.deck_complete:
+            opp.preload(self.opp.deck)
+        for (p, _), name in zip(self.events, names):
+            played = card(name) if name != UNKNOWN else None
+            opp.play(name, played.cost if played else 3, p.time, p.multiplier, champion=bool(played and played.has("champion")))
+        self.opp = opp
+        self.debug = [(p, dict(p.votes), name) for (p, _), name in zip(self.events, names)]
 
     def _view(self, now: float) -> View:
         hand = [card(n) if n else None for n in self.my_hand]
@@ -221,4 +270,6 @@ class Match:
             my_elixir=self.my_elixir,
             deck_known=self.opp.deck_complete,
             plays=self.opp.plays[-6:],
+            queue=self.opp.queue,
+            opponent=self.opponent,
         )

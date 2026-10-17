@@ -60,8 +60,10 @@ def advise(
     their_elixir = int(opp.elixir)
 
     # 1 an enemy push nobody has answered yet
-    if threat and now - threat.time <= THREAT_SECONDS and not answered:
-        enemy = card(threat.card)
+    enemy = card(threat.card) if threat else None
+    # a cheap unit that does not go for towers is the tower's job, spending on it loses elixir
+    worth_answering = enemy is not None and (enemy.cost > 2 or enemy.has("win") or enemy.has("swarm"))
+    if threat and worth_answering and now - threat.time <= THREAT_SECONDS and not answered:
         options = sorted((c for c in known if answers(enemy, c)), key=lambda c: c.cost)
         affordable = [c for c in options if c.cost <= elixir]
         if affordable:

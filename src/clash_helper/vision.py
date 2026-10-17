@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import cv2
 import numpy as np
 
@@ -71,6 +73,10 @@ def read_text(image: np.ndarray) -> list[str]:
     return [r.topCandidates_(1)[0].string() for r in ordered]
 
 
+TIMER = cv2.imread(str(Path(__file__).parent / "data" / "deploy_timer.png"))
+TIMER_MATCH = 0.32  # real timers score 0.4 and up, red floor splatter about 0.2
+
+
 def deploy_clocks(frame: np.ndarray) -> list[tuple[int, int]]:
     """Centers of the red stopwatch shown where an enemy card is landing."""
     hsv = _hsv(frame[ARENA_TOP:ARENA_BOTTOM])
@@ -85,7 +91,13 @@ def deploy_clocks(frame: np.ndarray) -> list[tuple[int, int]]:
             continue
         if not (0.55 <= area / (w * hgt) <= 0.9):
             continue
-        found.append((int(centers[i][0]), int(centers[i][1]) + ARENA_TOP))
+        cx, cy = int(centers[i][0]), int(centers[i][1]) + ARENA_TOP
+        # a red disc is common on some arenas, the gold rim, knob and needle are not
+        around = frame[max(0, cy - 40) : cy + 40, max(0, cx - 38) : cx + 38]
+        if around.shape[0] < TIMER.shape[0] or around.shape[1] < TIMER.shape[1]:
+            continue
+        if cv2.matchTemplate(around, TIMER, cv2.TM_CCOEFF_NORMED).max() >= TIMER_MATCH:
+            found.append((cx, cy))
     return found
 
 
