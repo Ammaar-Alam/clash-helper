@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import cv2
@@ -76,6 +77,48 @@ def read_text(image: np.ndarray) -> list[str]:
 
 TIMER = cv2.imread(str(Path(__file__).parent / "data" / "deploy_timer.png"))
 TIMER_MATCH = 0.32  # real timers score 0.4 and up, red floor splatter about 0.2
+
+
+def time_left(frame: np.ndarray) -> int | None:
+    """Seconds on the match clock in the top right, None when it cannot be read."""
+    for line in read_text(frame[95:170, 550:664]):
+        found = re.search(r"(\d):([0-5]\d)", line.replace(" ", ""))
+        if found:
+            return int(found.group(1)) * 60 + int(found.group(2))
+    return None
+
+
+SKY = slice(40, 135)  # the score strip at the top, a Zap bolt drops straight through it
+_RING = np.zeros((2 * 92 + 41, 2 * 120 + 41), np.float32)
+cv2.ellipse(_RING, (140, 112), (120, 92), 0, 0, 360, 1.0, 9)
+_RING /= _RING.sum()
+
+
+def sky(frame: np.ndarray) -> np.ndarray:
+    """Brightness of the top strip, compare two frames with sky_bolt."""
+    return _hsv(frame[SKY])[..., 2].astype(np.int16)
+
+
+def sky_bolt(now_sky: np.ndarray, before: np.ndarray) -> tuple[float, int]:
+    """How much of a thin column brightened through the top strip, and where, a Zap falling."""
+    rose = (now_sky - before) > 25
+    width = rose.shape[1] // 4 * 4
+    cols = rose[:, :width].reshape(rose.shape[0], -1, 4).any(axis=2)
+    # a bolt wanders a few pixels, so any brightening in a 12 px window counts for that row
+    band = np.stack([cols[:, i : i + cols.shape[1] - 2] for i in range(3)]).any(axis=0)
+    share = band.mean(axis=0)
+    best = int(np.argmax(share))
+    return round(float(share[best]), 3), best * 4 + 6
+
+
+def arrows_ring(frame: np.ndarray) -> tuple[float, int, int]:
+    """Strength and center of the salmon impact ring enemy Arrows leave on the ground."""
+    hsv = _hsv(frame[ARENA_TOP:ARENA_BOTTOM])
+    h, s, v = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+    mask = ((h >= 2) & (h <= 11) & (s >= 95) & (s <= 160) & (v >= 190)).astype(np.float32)
+    score = cv2.filter2D(mask, -1, _RING, borderType=cv2.BORDER_CONSTANT)
+    _, best, _, (x, y) = cv2.minMaxLoc(score)
+    return round(float(best), 3), int(x), int(y) + ARENA_TOP
 
 
 def deploy_clocks(frame: np.ndarray) -> list[tuple[int, int]]:

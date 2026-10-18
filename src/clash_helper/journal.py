@@ -49,6 +49,7 @@ class Journal:
         self.events = (self.folder / "events.jsonl").open("w")
         self.started_at = datetime.now(timezone.utc)
         self.start = now
+        self.written = 0
         self.last_call = ""
         self.last_state = -STATE_EVERY
         self.mine_logged = 0
@@ -67,7 +68,12 @@ class Journal:
         if not view.in_match:
             self._finish(match)
             return
-        self.video.write(cv2.resize(frame, VIDEO_SIZE, interpolation=cv2.INTER_AREA))
+        # the loop is not always at full speed, repeat frames so video time stays real time
+        due = int((now - self.start) * self.fps) + 1
+        image = cv2.resize(frame, VIDEO_SIZE, interpolation=cv2.INTER_AREA)
+        while self.written < due:
+            self.video.write(image)
+            self.written += 1
         call = asdict(view.call)
         if str(view.call) != self.last_call:
             self.last_call = str(view.call)

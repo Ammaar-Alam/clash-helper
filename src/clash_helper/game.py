@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from clash_helper import api, kcr, vision
+from clash_helper import api, confusion, kcr, vision
 from clash_helper.advisor import Call, MyPlay, Situation, Threat, advise
 from clash_helper.board import LANES, Board, BoardReader, lane
 from clash_helper.cards import card
@@ -26,10 +26,12 @@ NAME_SECONDS = 1.4  # how long after a deploy timer the units around it vote on 
 CLOCK_MERGE = 70  # px, one deploy timer seen over several frames
 CLOCK_SECONDS = 1.6
 MATCH_GONE_SECONDS = 3.0
+REGULATION = 180  # seconds on the clock when a match starts
 THREAT_LOST = 1.2  # seconds a tracked unit can go unseen before it counts as dead
 SAME_SPELL_SECONDS = 2.0
 SPELL_SIGHTINGS = 2  # enemy side detections of a spell before it counts as cast
 SURE_SPELL = 0.75  # or one detection this confident
+SPELL_TRAVEL = 30  # px a spell must move before its direction decides its side
 BIRTH_CONF = 0.6  # a new enemy unit this confident is a play even without a visible timer
 REAPPEAR = (4.0, 220)  # seconds and px within which a "new" unit is an old one the tracker lost
 # cards that put the same units on the arena as another card, a child near its parent is no new play
@@ -52,6 +54,11 @@ DEATH_SPAWNERS = {"Skeleton Barrel", "Battle Ram", "Golem", "Elixir Golem", "Lav
 SPELL_SPAWNS = {"Goblin Barrel": {"Goblins"}, "Graveyard": {"Skeletons"}, "Barbarian Barrel": {"Barbarians"},
                 "Royal Delivery": {"Royal Recruits"}, "Skeleton Barrel": {"Skeletons"}}
 SPELL_SPAWN_SECONDS = 4.0
+# signal thresholds from research/spell_signals.py, with the spell in their deck and without
+ZAP_BOLT = (0.4, 0.6)  # share of the top strip a falling bolt lights up
+ARROWS_RING = (0.25, 0.45)  # strength of the salmon impact ring
+ARROWS_FLIGHT = 0.6  # seconds from launch to the ring
+CUE_SECONDS = 2.5  # one cast, seen over several frames or also by the detector
 POCKET_Y = 790  # how far into your side they may deploy once your tower in that lane is down
 VOTE_AGE = 0.5  # only units that appeared around the landing vote, not bystanders already there
 ANYWHERE = {"Miner", "Goblin Drill", "Royal Delivery"}  # land on your side without a destroyed tower
@@ -81,6 +88,15 @@ class Track:
     last: float = 0.0
     born_enemy: bool = False  # side on its first sighting, before votes settle
     sightings: int = 0
+    x0: int = 0  # where it was first seen, a spell's direction of travel gives away its side
+    y0: int = 0
+
+    @property
+    def flying_down(self) -> bool | None:
+        """For a moving spell, whether it travels down the screen, from their side toward yours."""
+        if abs(self.y - self.y0) < SPELL_TRAVEL:
+            return None
+        return self.y > self.y0
 
     @property
     def enemy(self) -> bool:
@@ -89,6 +105,24 @@ class Track:
     @property
     def card(self) -> str | None:
         return self.cards.most_common(1)[0][0] if self.cards else None
+
+
+@dataclass
+class Observation:
+    """What one frame shows, cached by the research tools so experiments skip the video."""
+
+    now: float
+    in_match: bool
+    time_left: int | None = None  # read only while the match start is still unknown
+    multiplier: float = 1.0
+    elixir: int = 0
+    hand: list[str | None] | None = None
+    clocks: list[tuple[int, int]] = field(default_factory=list)
+    units_at: float = 0.0
+    units: list = field(default_factory=list)
+    towers: dict | None = None  # raw health reads, when this frame was read
+    bolt: tuple[float, int] = (0.0, 0)  # a Zap falling through the top strip, share and x
+    ring: tuple[float, int, int] = (0.0, 0, 0)  # an enemy Arrows impact ring, score and center
 
 
 @dataclass
@@ -162,6 +196,8 @@ class Match:
         self.my_plays: list[MyPlay] = []
         self.last_drop = -10.0
         self.multiplier = 1.0
+        self.last_sky = None
+        self.first_frame = 0.0
         self.last_rule = ""
         self.enemies: list[tuple[int, int]] = []
         self.tracks: dict[int, Track] = {}
@@ -212,7 +248,39 @@ class Match:
         threading.Thread(target=run, daemon=True).start()
 
     def step(self, frame: np.ndarray, now: float) -> View:
-        if not vision.in_match(frame):
+        return self.update(self.observe(frame, now))
+
+    def observe(self, frame: np.ndarray, now: float) -> Observation:
+        """Everything this frame shows, the only part that needs the image."""
+        obs = Observation(now, vision.in_match(frame))
+        if not obs.in_match:
+            return obs
+        if self.started is None:
+            obs.time_left = vision.time_left(frame)
+        if self.lookup and self.lookup_state == "todo" and api.token():
+            self._lookup_opponent(frame, now)
+        obs.multiplier = vision.elixir_multiplier(frame)
+        obs.elixir = vision.own_elixir(frame)
+        if self.hand_reader:
+            obs.hand = self.hand_reader.read(frame)[0]
+        # the detector works in the background, the newest result rides along
+        self.detector.submit(frame, now)
+        while self.sync and self.detector.busy:
+            time.sleep(0.002)
+        obs.units_at, obs.units = self.detector.result()
+        obs.clocks = vision.deploy_clocks(frame)
+        sky = vision.sky(frame)
+        if self.last_sky is not None:
+            obs.bolt = vision.sky_bolt(sky, self.last_sky)
+        self.last_sky = sky
+        obs.ring = vision.arrows_ring(frame)
+        self.reader.towers(frame, now)
+        return obs
+
+    def update(self, obs: Observation) -> View:
+        """Advance the match by one observation, live frames and cached replays alike."""
+        now = obs.now
+        if not obs.in_match:
             if self.started is not None and now - self.last_seen > MATCH_GONE_SECONDS:
                 # keep what happened for the journal, the next match starts clean
                 self.ended = {"plays": list(self.debug), "opponent": self.opponent, "deck": list(self.opp.deck),
@@ -220,34 +288,30 @@ class Match:
                 self._reset()
             return View(in_match=False) if self.started is None else self._view(now)
         if self.started is None:
-            self.started = now
-            self.opp.last_time = now
+            self.first_frame = now
+            # the helper often notices a match a few seconds in, the clock says how many
+            left = obs.time_left
+            elapsed = REGULATION - left if left is not None and 0 < left <= REGULATION else 0
+            self.started = now - elapsed
+            self.opp.last_time = self.started
             threading.Thread(target=self._load_my_deck, daemon=True).start()
         self.last_seen = now
-        if self.lookup and self.lookup_state == "todo" and api.token():
-            self._lookup_opponent(frame, now)
 
-        multiplier = self.multiplier = vision.elixir_multiplier(frame)
+        multiplier = self.multiplier = obs.multiplier
         self.opp.tick(now, multiplier)
-        self._track_my_elixir(vision.own_elixir(frame), now)
-        if self.hand_reader:
-            hand, _ = self.hand_reader.read(frame)
+        self._track_my_elixir(obs.elixir, now)
+        if obs.hand is not None:
             # a card mid-slide or being dragged reads as None, keep the last good name
-            hand = [new or old for new, old in zip(hand, self.my_hand)]
+            hand = [new or old for new, old in zip(obs.hand, self.my_hand)]
             self._track_my_plays(hand, now)
             self.my_hand = hand
+        if obs.towers is not None:
+            self.reader.apply(obs.towers)
+        if obs.units_at > self.last_seen_units:
+            self.last_seen_units = obs.units_at
+            self._see(obs.units, obs.units_at)
 
-        # the detector works in the background, every new result updates the board
-        self.detector.submit(frame, now)
-        while self.sync and self.detector.busy:
-            time.sleep(0.002)
-        seen_at, units = self.detector.result()
-        if seen_at > self.last_seen_units:
-            self.last_seen_units = seen_at
-            self._see(units, seen_at)
-        self.reader.towers(frame, now)
-
-        for x, y in vision.deploy_clocks(frame):
+        for x, y in obs.clocks:
             if y > vision.ARENA_BOTTOM - 120 or x > 615:
                 continue  # emote bubbles and the crown counter look like timers
             if any(abs(x - cx) + abs(y - cy) < CLOCK_MERGE and now - t < CLOCK_SECONDS for cx, cy, t in self.clocks):
@@ -263,10 +327,36 @@ class Match:
             self.answered = False
         self.clocks = [c for c in self.clocks if now - c[2] < CLOCK_SECONDS]
 
+        # the two spells the detector never sees, by their own marks on the screen. The marks also
+        # flash for other reasons, so a weak one only counts when their deck is known to hold the spell
+        deck = set(self.opp.deck) if self.deck_from_api else self._learned_deck(self._names())
+        settled = now - self.first_frame > 1.0  # the first comparison of a match flashes on its own
+        share, x = obs.bolt if settled else (0.0, 0)
+        if share >= (ZAP_BOLT[0] if "Zap" in deck else ZAP_BOLT[1]):
+            self._land_cue("Zap", x, 500, now)
+        strength, x, y = obs.ring if settled else (0.0, 0, 0)
+        if strength >= (ARROWS_RING[0] if "Arrows" in deck else ARROWS_RING[1]):
+            # the ring shows at impact, the volley left their tower a little earlier
+            self._land_cue("Arrows", x, y, now - ARROWS_FLIGHT)
+
         for p in [p for p in self.pending if now - p.time >= NAME_SECONDS]:
             self.pending.remove(p)
             self._land(p)
         return self._view(now)
+
+    def _land_cue(self, name: str, x: int, y: int, when: float) -> None:
+        """A spell found by its mark rather than the detector, once per cast and never your own."""
+        if any(n == name and abs(when - t) < CUE_SECONDS for n, t in self.spell_casts):
+            return
+        if any(p.card == name and abs(when - p.time) < CUE_SECONDS for p in self.my_plays):
+            return
+        self.spell_casts.append((name, when))
+        p = Pending(x, y, when, self.multiplier, Counter({confusion.CUE + name: 2.0}), source="spell")
+        self.events.append((p, Evidence(p.votes, 0, None, named=name, spell=True, source="spell")))
+        self.events.sort(key=lambda e: e[0].time)
+        self._rename()
+        self.played += 1
+        self.last_play = name
 
     def _see(self, units: list[kcr.Unit], at: float) -> None:
         """Fold one detector result into the tracks, the board, the open deploys and the threat."""
@@ -274,7 +364,7 @@ class Match:
         for u in units:
             if not u.card:
                 continue
-            t = self.tracks.setdefault(u.track, Track(first=at, born_enemy=u.enemy))
+            t = self.tracks.setdefault(u.track, Track(first=at, born_enemy=u.enemy, x0=u.x, y0=u.bottom))
             t.side += 1 if u.enemy else -1
             t.sightings += 1
             t.cards[u.card] += u.conf
@@ -317,11 +407,18 @@ class Match:
 
         # an enemy spell is a play of its own, it never shows a timer, one frame is not enough to trust it
         for k, t in current:
-            sure = t.side >= SPELL_SIGHTINGS or (t.first == at and t.born_enemy and t.cards[t.card] >= SURE_SPELL)
-            if sure and card(t.card).spell and k not in self.spells_seen and not self._landing_effect(t, at):
+            if not card(t.card).spell:
+                continue
+            # their spells fly from their king tower down toward you, yours fly up, which beats a side guess
+            direction = t.flying_down
+            if direction is not None:
+                sure = direction and t.sightings >= SPELL_SIGHTINGS
+            else:
+                sure = t.side >= SPELL_SIGHTINGS or (t.first == at and t.born_enemy and t.cards[t.card] >= SURE_SPELL)
+            if sure and k not in self.spells_seen and not self._landing_effect(t, at):
                 if not any(self.tracks.get(j) and self.tracks[j].card == t.card and at - s < SAME_SPELL_SECONDS
                            for j, s in self.spells_seen.items()):
-                    self._land_spell(k, t, at)
+                    self._land_spell(k, t, t.first)  # they paid when it left their hand
                 self.spells_seen[k] = at
         # a spell's name settles over its flight, the first frame is often a look-alike
         if any(e.spell and e.track in self.tracks for _, e in self.events):
@@ -408,6 +505,8 @@ class Match:
 
     def _land_spell(self, track: int, t: Track, when: float) -> None:
         name = t.card
+        if any(n == name and abs(when - w) < CUE_SECONDS for n, w in self.spell_casts):
+            return  # its mark on the screen already counted it
         self.spell_casts.append((name, when))
         p = Pending(t.x, t.y, when, self.multiplier, Counter({name: 2.0}), source="spell")
         self.events.append((p, Evidence(p.votes, 0, None, named=name, spell=True, track=track, source="spell")))
@@ -424,7 +523,21 @@ class Match:
         else:
             # each candidate on its own, read through what the detector's classes really mean
             names = [best(e) if e.votes else UNKNOWN for _, e in self.events]
+            learned = self._learned_deck(names)
+            if len(learned) == 8:
+                # once all 8 of their cards have shown up, the cycle helps exactly as with a looked up deck
+                names = decode([e for _, e in self.events], sorted(learned), {})
         self._replay(names)
+
+    def _names(self) -> list[str]:
+        return [name for _, _, name in self.debug]
+
+    def _learned_deck(self, names: list[str]) -> set[str]:
+        """Up to 8 cards their plays most strongly point to."""
+        backing: Counter = Counter()
+        for (_, evidence), name in zip(self.events, names):
+            backing[name] += sum(evidence.votes.values())
+        return {n for n, v in backing.most_common(8) if v >= SURE_VOTES and n not in (UNKNOWN, NONE)}
 
     def _replay(self, names: list[str]) -> None:
         """Rebuild the opponent from the start with the current best names."""
@@ -434,10 +547,7 @@ class Match:
             keep = set(self.opp.deck)
         else:
             # a deck learned from play holds at most 8 cards, the ones the detector backed most
-            backing: Counter = Counter()
-            for (_, evidence), name in zip(self.events, names):
-                backing[name] += sum(evidence.votes.values())
-            keep = {n for n, v in backing.most_common(8) if v >= SURE_VOTES and n not in (UNKNOWN, NONE)}
+            keep = self._learned_deck(names)
         for (p, _), name in zip(self.events, names):
             if name == NONE:
                 continue  # a spawn or an effect, not a play

@@ -131,3 +131,15 @@ def test_decoder_drops_an_effect_it_has_learned_is_no_play(monkeypatch):
     deck = ["Witch", "Minions", "Dart Goblin", "Fireball", "Goblin Gang", "Skeleton Barrel", "Electro Wizard", "Mega Knight"]
     evidence = [Evidence(Counter({"Rage": 1.0}), 0, None, spell=True, source="spell")]
     assert decode(evidence, deck, {}) == [NONE]
+
+
+def test_a_spell_flying_down_is_theirs_and_up_is_yours():
+    from clash_helper.game import Track
+
+    theirs = Track(y0=250)
+    theirs.y = 600
+    yours = Track(y0=1000)
+    yours.y = 700
+    still = Track(y0=500)
+    still.y = 510
+    assert theirs.flying_down is True and yours.flying_down is False and still.flying_down is None

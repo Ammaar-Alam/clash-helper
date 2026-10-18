@@ -14,21 +14,24 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from evaluate import CAPTURES, SAME_PIXELS, SAME_SECONDS, SPELL_EARLY, CachedDetector, truth_plays  # noqa: E402
+from evaluate import CAPTURES, SAME_PIXELS, SAME_SECONDS, SPELL_EARLY, CachedDetector, observations, truth_plays  # noqa: E402
 
 import gzip  # noqa: E402
 
 from clash_helper.cards import card  # noqa: E402
-from clash_helper.cli import video_frames  # noqa: E402
 from clash_helper.game import Match  # noqa: E402
 
 
 def candidates(item: dict) -> list:
+    """Every candidate play, with their deck known as in the evaluation."""
     with gzip.open(CAPTURES / "scans" / f"{item['id']}.json.gz", "rt") as f:
         match = Match(detector=CachedDetector(json.load(f)), lookup=False, sync=True)
     events: list = []
-    for frame, now in video_frames(Path(item["video"]), 6):
-        match.step(frame, now)
+    for obs in observations(item, match, False):
+        match.update(obs)
+        if match.started is not None and not match.deck_from_api:
+            match.opp.preload(item["their_deck"])
+            match.deck_from_api = True
         if match.events:
             events = list(match.events)
     return events

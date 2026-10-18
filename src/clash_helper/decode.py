@@ -39,7 +39,7 @@ def scores(evidence: Evidence, deck: list[str] | None, levels: dict[str, int]) -
     pool = deck if deck is not None else list(all_cards())
     # a spell never lands with a timer and a unit never flies in like a spell
     kind = [c for c in pool if card(c).spell == evidence.spell]
-    out = confusion.emission(evidence.votes, kind)
+    out = confusion.emission(evidence.votes, kind, evidence.spell)
     for name in kind:
         count = card(name).count
         if evidence.units >= 2:

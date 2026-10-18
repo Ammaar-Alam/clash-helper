@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import sys
 from pathlib import Path
 
 from clash_helper import kcr
@@ -22,6 +23,7 @@ from clash_helper.game import Match
 from clash_helper.tracker import UNKNOWN, Opponent
 
 CAPTURES = Path(__file__).resolve().parents[1] / "captures"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "research"))
 SAME_SECONDS = 1.5
 SAME_PIXELS = 130
 SPELL_EARLY = 3.5  # seconds a spell can be seen before its impact, a Goblin Barrel flies about 2.7
@@ -58,6 +60,19 @@ def truth_plays(labels: dict) -> list[dict]:
     return sorted(plays, key=lambda p: p["time"])
 
 
+def observations(item: dict, match: Match, live: bool):
+    """Cached observations when research/observe.py made them, else the video frame by frame."""
+    cached = CAPTURES / "obs" / f"{item['id']}.json.gz"
+    if not live and cached.exists():
+        from observe import load
+
+        for obs in load(cached):
+            yield obs
+        return
+    for frame, now in video_frames(Path(item["video"]), 6):
+        yield match.observe(frame, now)
+
+
 def run(item: dict, deck_known: bool, live: bool) -> tuple[list, list, float | None]:
     scan = CAPTURES / "scans" / f"{item['id']}.json.gz"
     if live or not scan.exists():
@@ -69,8 +84,9 @@ def run(item: dict, deck_known: bool, live: bool) -> tuple[list, list, float | N
     plays: list = []
     elixir: list[tuple[float, float, float]] = []  # time, estimate, multiplier
     start = None
-    for frame, now in video_frames(Path(item["video"]), 6):
-        match.step(frame, now)
+    for obs in observations(item, match, live):
+        now = obs.now
+        match.update(obs)
         if deck_known and match.started is not None and not match.deck_from_api:
             # stands in for a successful lookup of their deck
             match.opp.preload(item["their_deck"])
@@ -81,7 +97,7 @@ def run(item: dict, deck_known: bool, live: bool) -> tuple[list, list, float | N
         # names keep improving as evidence arrives, keep the latest before the match resets
         if match.debug:
             # candidates read as no play were dropped by the helper
-            plays = [(p.time, p.x, p.y, name) for p, _, name in match.debug if name != "none"]
+            plays = [(p.time, p.x, p.y, name, p.source) for p, _, name in match.debug if name != "none"]
     detector.close()
     return plays, elixir, start
 
@@ -109,7 +125,8 @@ def score(item: dict, labels: dict, deck_known: bool, live: bool) -> dict:
     used: set[int] = set()
     right = wrong = unknown = 0
     errors = []
-    for t, x, y, name in plays:
+    found = {"false": [], "wrong": [], "missed": []}
+    for t, x, y, name, source in plays:
         def close(i: int, p: dict) -> bool:
             # spells are labeled at impact and usually caught while still flying in
             early = SPELL_EARLY if card(p["card"]).spell else SAME_SECONDS
@@ -122,7 +139,8 @@ def score(item: dict, labels: dict, deck_known: bool, live: bool) -> dict:
 
         hit = next((i for i, p in enumerate(truth) if close(i, p)), None)
         if hit is None:
-            errors.append(f"false  {t:6.1f}s ({x},{y}) {name}")
+            errors.append(f"false  {t:6.1f}s ({x},{y}) {name} from {source}")
+            found["false"].append((name, source))
             continue
         used.add(hit)
         label = truth[hit]["card"]
@@ -134,16 +152,18 @@ def score(item: dict, labels: dict, deck_known: bool, live: bool) -> dict:
         else:
             wrong += 1
             errors.append(f"wrong  {t:6.1f}s ({x},{y}) {name}, was {label}")
+            found["wrong"].append((name, label))
     for i, p in enumerate(truth):
         if i not in used:
             errors.append(f"missed {p['time']:6.1f}s ({p.get('x')},{p.get('y')}) {p['card']}")
+            found["missed"].append(p["card"])
     estimate = [e for _, e, _ in elixir]
     actual = true_elixir(truth, elixir, start)
     gap = sum(abs(a - b) for a, b in zip(estimate, actual)) / len(actual) if actual else float("nan")
     return {"id": item["id"], "truth": len(truth), "found": len(used), "false": len(plays) - len(used),
             "right": right, "wrong": wrong, "unknown": unknown, "elixir_error": round(gap, 2), "errors": errors,
             "spells": sum(card(p["card"]).spell for p in truth),
-            "spells_found": sum(card(truth[i]["card"]).spell for i in used)}
+            "spells_found": sum(card(truth[i]["card"]).spell for i in used), "breakdown": found}
 
 
 def main() -> None:

@@ -55,6 +55,15 @@ def _number(lines: list[str]) -> int | None:
     return int(digits[-1]) if digits else None
 
 
+def read_towers(frame: np.ndarray) -> dict[tuple[str, str], int | None]:
+    """The four princess tower health numbers as text recognition reads them, None when unreadable."""
+    reads = {}
+    for key, (y0, y1, x0, x1) in TOWER_HP.items():
+        crop = cv2.resize(frame[y0:y1, x0:x1], None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        reads[key] = _number(vision.read_text(crop))
+    return reads
+
+
 class BoardReader:
     def __init__(self) -> None:
         self.board = Board()
@@ -68,13 +77,12 @@ class BoardReader:
         if now - self.last_read < TOWER_EVERY or (self.worker and self.worker.is_alive()):
             return
         self.last_read = now
-        self.worker = threading.Thread(target=self._read_towers, args=(frame.copy(),), daemon=True)
+        self.worker = threading.Thread(target=lambda f: self.apply(read_towers(f)), args=(frame.copy(),), daemon=True)
         self.worker.start()
 
-    def _read_towers(self, frame: np.ndarray) -> None:
-        for (side, which), (y0, y1, x0, x1) in TOWER_HP.items():
-            crop = cv2.resize(frame[y0:y1, x0:x1], None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-            hp = _number(vision.read_text(crop))
+    def apply(self, reads: dict[tuple[str, str], int | None]) -> None:
+        """Fold one round of health reads into the board."""
+        for (side, which), hp in reads.items():
             towers = self.board.their_towers if side == "their" else self.board.my_towers
             known = towers[which]
             seen = self.last_seen.get((side, which))
