@@ -23,18 +23,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from evaluate import CAPTURES, score  # noqa: E402
 from train import EVENTS, fit  # noqa: E402
 
-from clash_helper import confusion  # noqa: E402
+from clash_helper import bots, confusion  # noqa: E402
 from clash_helper.cards import card  # noqa: E402
 
 SHARP = 600  # px wide, the first helper recordings were saved at half resolution
 
 
 def held_out(recording: str, rows: list[dict], folder: Path) -> None:
-    """Point the helper at class meanings learned without this recording."""
+    """Point the helper at class meanings learned without this recording, and at bot decks without
+    this game's own."""
     path = folder / f"{recording}.json"
     path.write_text(json.dumps(fit([r for r in rows if r["recording"] != recording])))
     os.environ["CLASH_CONFUSION"] = str(path)
     confusion.table.cache_clear()
+    # the bot decks were gathered after this game, so it is in there once
+    theirs = next(sorted(i["their_deck"]) for i in json.loads((CAPTURES / "dataset.json").read_text())
+                  if i["id"] == recording)
+    pool = [[d, n - (d == theirs)] for d, n in json.loads(bots.PATH.read_text())]
+    decks = folder / f"{recording}_bots.json"
+    decks.write_text(json.dumps([[d, n] for d, n in pool if n > 0]))
+    os.environ["CLASH_BOT_DECKS"] = str(decks)
+    bots.decks.cache_clear()
 
 
 def summary(name: str, results: list[dict]) -> str:

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from clash_helper import api, confusion, kcr, vision
+from clash_helper import api, bots, confusion, kcr, vision
 from clash_helper.advisor import Call, MyPlay, Situation, Threat, advise
 from clash_helper.board import LANES, Board, BoardReader, lane
 from clash_helper.cards import card
@@ -64,7 +64,6 @@ BOLT_Y = 500  # where a bolt's landing is assumed until a unit shows the spot
 ARROWS_RING = (0.25, 0.45)  # strength of the salmon impact ring
 ARROWS_FLIGHT = 0.6  # seconds from launch to the ring
 CUE_SECONDS = 2.5  # one cast, seen over several frames or also by the detector
-POCKET_Y = 790  # how far into your side they may deploy once your tower in that lane is down
 VOTE_AGE = 0.5  # only units that appeared around the landing vote, not bystanders already there
 ANYWHERE = {"Miner", "Goblin Drill", "Royal Delivery"}  # land on your side without a destroyed tower
 SURE_VOTES = 1.2  # summed confidence before a name may join a deck learned from play
@@ -81,6 +80,7 @@ class Pending:
     multiplier: float
     votes: Counter = field(default_factory=Counter)  # card -> summed confidence
     tracks: set[int] = field(default_factory=set)
+    crowd: int = 0  # most units seen landing here at once, the tracker's new ids for one unit add up otherwise
     source: str = "timer"  # timer, birth, bolt or spell
 
     def covers(self, x: int, y: int) -> bool:
@@ -186,6 +186,7 @@ class Match:
     def _reset(self) -> None:
         self.opp = Opponent()
         self.deck_from_api = False
+        self.guess: list[str] | None = None  # their deck worked out from play, all 8 seen or a bot's preset
         self.started: float | None = None
         self.last_seen = 0.0
         self.pending: list[Pending] = []
@@ -331,7 +332,7 @@ class Match:
         self.clocks = [c for c in self.clocks if now - c[2] < CLOCK_SECONDS]
 
         # cards the detector misses, by their own marks on the screen
-        deck = set(self.opp.deck) if self.deck_from_api else self._learned_deck(self._names())
+        deck = set(self.opp.deck) if self.deck_from_api else set(self.guess or self._learned_deck(self._names()))
         settled = now - self.first_frame > 1.0  # the first comparison of a match flashes on its own
         share, x = obs.bolt if settled else (0.0, 0)
         if share >= self._bar(BOLT_CARDS, BOLT, deck) and now - self.last_bolt > CUE_SECONDS:
@@ -436,16 +437,19 @@ class Match:
         # units that appeared on a fresh deploy timer vote on what it was, bystanders do not. A new
         # unit sometimes takes over the track of one that just left, so it is the class that must be new
         for p in self.pending:
+            here = 0
             for k, t in troops:
                 if not t.enemy or abs(t.x - p.x) >= 70 or not (p.source == "bolt" or -40 < t.y - p.y < 110):
                     continue
                 new = {c: v for c, v in t.cards.items() if t.since[c] >= p.time - VOTE_AGE}
                 if new:
+                    here += 1
+                    if p.source == "bolt" and not p.votes:
+                        p.x, p.y = t.x, t.y  # the first unit under a bolt shows where it landed
                     top = max(new, key=new.get)
                     p.votes[top] += new[top] / max(1, sum(new.values()))
                     p.tracks.add(k)
-                    if p.source == "bolt":
-                        p.x, p.y = t.x, t.y  # the unit shows where the bolt landed
+            p.crowd = max(p.crowd, here)
             if p.source == "bolt" and p.votes and (self.threat is None or self.threat.time < p.time):
                 self.threat = Threat(UNKNOWN, p.x, p.time, p.y, last_seen=at)
                 self.answered = False
@@ -531,13 +535,16 @@ class Match:
     def _known(self, k: int, t: Track, at: float) -> bool:
         """Whether a new enemy unit belongs to something already accounted for."""
         for j, other in self.tracks.items():
-            if j == k or not other.enemy or other.card is None:
+            if j == k or other.card is None:
                 continue
             gap = at - other.last
             near = abs(other.x - t.x) + abs(other.y - t.y)
-            # the tracker lost a unit for a moment and gave it a new id, sometimes under another name
-            if other.card == t.card and 0 < gap <= REAPPEAR[0] and near <= REAPPEAR[1]:
+            # the tracker lost a unit for a moment or doubled it under a new id, its side guess can flip too
+            if other.card == t.card and 0 <= gap <= REAPPEAR[0] and near <= REAPPEAR[1]:
                 return True
+            if not other.enemy:
+                continue
+            # or gave it a new id under another name
             if 0 < gap <= 1.5 and near <= 120 and not card(other.card).spell:
                 return True
             # a spawn from a card already on the arena
@@ -550,12 +557,9 @@ class Match:
         if any(t.card in SPELL_SPAWNS.get(name, ()) and 0 <= at - when <= SPELL_SPAWN_SECONDS
                for name, when in self.spell_casts):
             return True
-        # their units land on their own half, except a few cards and a pocket next to a tower they destroyed
-        if t.y > vision.RIVER_Y and t.card not in ANYWHERE:
-            pocket = self.reader.board.my_towers.get(lane(t.x)) == 0 and t.y <= POCKET_Y
-            if not pocket:
-                return True
-        return False
+        # their units land on their own half except a few cards. Next to a tower they destroyed a deploy
+        # shows its timer in plain view, a new unit there without one is yours with its side misread
+        return t.y > vision.RIVER_Y and t.card not in ANYWHERE
 
     def _track_my_elixir(self, elixir: int, now: float) -> None:
         if elixir < self.my_elixir:
@@ -578,7 +582,7 @@ class Match:
             self._land_cue("Zap", p.x, p.y, p.time)  # nothing landed under the bolt
             return
         named = p.votes.most_common(1)[0][0] if p.votes else None
-        self.events.append((p, Evidence(p.votes, len(p.tracks), None, named=named, source=p.source)))
+        self.events.append((p, Evidence(p.votes, p.crowd, None, named=named, source=p.source)))
         self._rename()
         self.played += 1
         self.last_play = self.debug[-1][2]
@@ -606,9 +610,12 @@ class Match:
             # each candidate on its own, read through what the detector's classes really mean
             names = [best(e) if e.votes else UNKNOWN for _, e in self.events]
             learned = self._learned_deck(names)
-            if len(learned) == 8:
-                # once all 8 of their cards have shown up, the cycle helps exactly as with a looked up deck
-                names = decode([e for _, e in self.events], sorted(learned), {})
+            # a bot's preset deck that holds the cards they have shown, or all 8 of their cards seen.
+            # Worked out again on every new play, cards outside the guess drop it
+            self.guess = bots.deck(frozenset(learned)) or (sorted(learned) if len(learned) == 8 else None)
+            if self.guess:
+                # the cycle helps exactly as with a looked up deck
+                names = decode([e for _, e in self.events], self.guess, {})
         self._replay(names)
 
     def _names(self) -> list[str]:
@@ -624,9 +631,10 @@ class Match:
     def _replay(self, names: list[str]) -> None:
         """Rebuild the opponent from the start with the current best names."""
         opp = Opponent(last_time=self.started or 0.0)
-        if self.deck_from_api:
-            opp.preload(self.opp.deck)
-            keep = set(self.opp.deck)
+        deck = self.opp.deck if self.deck_from_api else self.guess
+        if deck:
+            opp.preload(deck)
+            keep = set(deck)
         else:
             # a deck learned from play holds at most 8 cards, the ones the detector backed most
             keep = self._learned_deck(names)
