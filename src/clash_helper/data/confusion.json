@@ -102,7 +102,7 @@
   "Skeletons": 0.324
  },
  "Inferno Tower": {
-  "Inferno Tower": 3.9
+  "Inferno Tower": 3.909
  },
  "Knight": {
   "Knight": 4.0,
@@ -118,7 +118,7 @@
   "Princess": 0.109
  },
  "Mega Knight": {
-  "Mega Knight": 10.624,
+  "Mega Knight": 10.768,
   "Prince": 0.335,
   "Royal Hogs": 0.104,
   "none": 0.5
@@ -131,7 +131,7 @@
  },
  "Mini P.E.K.K.A": {
   "Archers": 0.329,
-  "Inferno Tower": 0.1,
+  "Inferno Tower": 0.091,
   "none": 1.0
  },
  "Minions": {
@@ -218,7 +218,7 @@
  },
  "Witch": {
   "Knight": 1.0,
-  "Mega Knight": 1.804,
+  "Mega Knight": 1.66,
   "P.E.K.K.A": 1.0,
   "Witch": 5.0,
   "none": 0.728

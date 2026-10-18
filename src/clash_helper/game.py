@@ -393,10 +393,11 @@ class Match:
         """Fold one detector result into the tracks, the board, the open deploys and the threat."""
         self.reader.see(units, at)
         # the detector spots a deploy timer while its red wedge is still too thin for the screen check,
-        # it now and then takes one of yours for theirs, but those land on your half
+        # it now and then takes one of yours for theirs, but those land on your half or in your pocket
         for u in units:
-            if u.name == "clock" and u.enemy and (u.top + u.bottom) // 2 <= vision.RIVER_Y + 20:
-                self._timer(u.x, (u.top + u.bottom) // 2, at)
+            y = (u.top + u.bottom) // 2
+            if u.name == "clock" and u.enemy and y <= vision.RIVER_Y + 20 and not self._my_pocket(u.x, at):
+                self._timer(u.x, y, at)
 
         current: list[tuple[int, Track]] = []
         present = {self.alias.get(u.track, u.track) for u in units}
@@ -475,7 +476,7 @@ class Match:
                 sure = direction
             else:
                 sure = t.card not in ROLLING and t.peak >= SURE_SPELL and not self._cast_by_me(t.card, t.first)
-            if sure and k not in self.spells_seen and not self._landing_effect(t, at):
+            if sure and k not in self.spells_seen and not self._landing_effect(t.x, t.y, at):
                 if not any(self.tracks.get(j) and self.tracks[j].card == t.card and at - s < SAME_SPELL_SECONDS
                            for j, s in self.spells_seen.items()):
                     self._land_spell(k, t, t.first)  # they paid when it left their hand
@@ -517,14 +518,18 @@ class Match:
         self.alias[u.track] = self.next_key
         return self.next_key
 
+    def _my_pocket(self, x: int, at: float) -> bool:
+        """Whether you may have just deployed there, past the river where you took their tower."""
+        return self.reader.board.their_towers.get(lane(x)) == 0 and at - self.last_drop < 1.5
+
     def _cast_by_me(self, name: str, when: float) -> bool:
         return any(p.card == name and -1.0 <= when - p.time <= 4.0 for p in self.my_plays)
 
-    def _landing_effect(self, t: Track, at: float) -> bool:
-        """A spell sighting on top of an enemy unit that just landed is that unit's own effect,
+    def _landing_effect(self, x: int, y: int, at: float) -> bool:
+        """A spell seen on top of an enemy unit that just landed is that unit's own effect,
         the Ice Wizard's frost burst, the Electro Wizard's zap, the Mega Knight's splash."""
         landings = [*self.pending, *(p for p, e in self.events if not e.spell)]
-        return any(-0.5 <= at - p.time <= 1.5 and abs(p.x - t.x) + (0 if p.source == "bolt" else abs(p.y - t.y)) <= 180
+        return any(-0.5 <= at - p.time <= 1.5 and abs(p.x - x) + (0 if p.source == "bolt" else abs(p.y - y)) <= 180
                    for p in landings)
 
     def _spawning(self, x: int, y: int, now: float) -> bool:
