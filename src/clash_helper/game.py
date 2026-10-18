@@ -682,12 +682,18 @@ class Match:
 
     @property
     def their_elixir(self) -> float:
-        """Their elixir with the cards still landing already paid for, at what their hand costs on average."""
+        """Their elixir with the cards still landing already paid for, at what the units on them so far
+        say among the cards in their hand."""
         if not self.pending:
             return self.opp.elixir
-        hand = [card(n).cost for n in self.opp.hand]
-        each = sum(hand) / len(hand) if hand else UNNAMED_COST
-        return max(0.0, self.opp.elixir - each * len(self.pending))
+        hand = self.opp.hand or None
+        paid = 0.0
+        for p in self.pending:
+            if p.votes and p.source != "bolt":
+                paid += expected_cost(Evidence(p.votes, p.crowd, None, source=p.source), hand, self.levels)
+            else:
+                paid += sum(card(n).cost for n in hand) / len(hand) if hand else UNNAMED_COST
+        return max(0.0, self.opp.elixir - paid)
 
     def _view(self, now: float) -> View:
         hand = [card(n) if n else None for n in self.my_hand]
