@@ -114,7 +114,20 @@ def test_decoder_keeps_spells_for_spell_evidence():
     deck = ["Skeleton Army", "Mega Knight", "Princess", "Royal Ghost", "Vines", "Bomber", "Goblin Barrel", "Giant Snowball"]
     evidence = [
         Evidence(Counter({"Skeleton Army": 2.0}), 12, None),
-        Evidence(Counter(), 0, None, named="Giant Snowball", spell=True),
+        Evidence(Counter({"Giant Snowball": 2.0}), 0, None, spell=True, source="spell"),
         Evidence(Counter({"Bomber": 1.0}), 1, None),
     ]
     assert decode(evidence, deck, {}) == ["Skeleton Army", "Giant Snowball", "Bomber"]
+
+
+def test_decoder_drops_an_effect_it_has_learned_is_no_play(monkeypatch):
+    from collections import Counter
+
+    from clash_helper import confusion
+    from clash_helper.decode import NONE, Evidence, decode
+
+    # pretend the labels showed "Rage" sightings were never real plays
+    monkeypatch.setattr(confusion, "table", lambda: {"Rage": {"none": 20}})
+    deck = ["Witch", "Minions", "Dart Goblin", "Fireball", "Goblin Gang", "Skeleton Barrel", "Electro Wizard", "Mega Knight"]
+    evidence = [Evidence(Counter({"Rage": 1.0}), 0, None, spell=True, source="spell")]
+    assert decode(evidence, deck, {}) == [NONE]

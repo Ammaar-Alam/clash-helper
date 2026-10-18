@@ -4,56 +4,62 @@ A card can only be played from the hand, and the hand is the deck minus the
 last 4 plays. So among any 4 plays in a row no card repeats. Each play has
 weak evidence on its own, the cycle ties them together, and a beam search
 finds the most likely sequence. Breaking the rule is allowed at a cost
-because spells and missed plays are invisible.
+because some plays are never seen. A candidate can also turn out to be no
+play at all, a spawn or an effect the detector mistook for a spell.
 """
 
 from __future__ import annotations
 
-import math
 from collections import Counter
 from dataclasses import dataclass
 
-from clash_helper.cards import card
+from clash_helper import confusion
+from clash_helper.cards import all_cards, card
 
+NONE = confusion.NONE
 BEAM = 300
 REPEAT_COST = 3.0  # nats, a repeat within 4 plays needs strong evidence
-NAMED_WEIGHT = 3.0
+# how believable a candidate is before looking at what the detector saw, by how it was found
+NONE_BIAS = {"timer": -2.0, "birth": -0.5, "spell": 0.0}
 
 
 @dataclass
 class Evidence:
     votes: Counter  # card -> summed detector confidence
-    units: int  # level badges around the landing spot
+    units: int  # units that appeared at the landing spot
     digits: int | None  # digits in the level badge
-    named: str | None = None  # the vision model's answer, arrives a moment later
-    spell: bool = False  # seen as a spell landing rather than a deploy timer
+    named: str | None = None
+    spell: bool = False  # seen as a spell rather than a unit landing
+    track: int | None = None  # the detector track that showed it, its later frames refine the name
+    source: str = "timer"  # timer, birth or spell
 
 
-def scores(evidence: Evidence, deck: list[str], levels: dict[str, int]) -> dict[str, float]:
-    """Log score per deck card for one play, 0 means no opinion."""
-    per_card = Counter({n: v for n, v in evidence.votes.items() if n in deck})
-    total = sum(per_card.values())
-    out = {}
-    for name in deck:
-        s = math.log((per_card[name] + 0.1) / (total + 0.8)) if total else 0.0
+def scores(evidence: Evidence, deck: list[str] | None, levels: dict[str, int]) -> dict[str, float]:
+    """Log score for each possible card and for no play at all."""
+    pool = deck if deck is not None else list(all_cards())
+    # a spell never lands with a timer and a unit never flies in like a spell
+    kind = [c for c in pool if card(c).spell == evidence.spell]
+    out = confusion.emission(evidence.votes, kind)
+    for name in kind:
         count = card(name).count
         if evidence.units >= 2:
-            s += 1.0 if count == evidence.units else -1.0
-        elif evidence.units == 1 and count >= 2:
-            s -= 0.4
+            out[name] += 1.0 if count == evidence.units else -1.0
+        elif evidence.units == 1 and count >= 3:
+            out[name] -= 0.4
         if evidence.digits and name in levels:
-            s += 0.5 if len(str(levels[name])) == evidence.digits else -0.5
-        if evidence.named == name:
-            # strong but not final, the cycle can still overrule a slip
-            s += NAMED_WEIGHT
-        if card(name).spell != evidence.spell:
-            s -= 5.0  # spells never show a deploy timer and troops always do
-        out[name] = s
+            out[name] += 0.5 if len(str(levels[name])) == evidence.digits else -0.5
+    out[NONE] += NONE_BIAS.get(evidence.source, 0.0)
     return out
 
 
+def best(evidence: Evidence, deck: list[str] | None = None) -> str:
+    """The single most likely reading of one candidate, possibly NONE."""
+    s = scores(evidence, deck, {})
+    return max(s, key=s.get)
+
+
 def decode(evidence: list[Evidence], deck: list[str], levels: dict[str, int]) -> list[str]:
-    """Most likely card for every play so far."""
+    """Most likely card, or NONE, for every candidate so far."""
     beams: dict[tuple[str, ...], tuple[float, tuple[str, ...]]] = {(): (0.0, ())}
     for ev in evidence:
         options = scores(ev, deck, levels)
@@ -61,9 +67,9 @@ def decode(evidence: list[Evidence], deck: list[str], levels: dict[str, int]) ->
         for recent, (total, path) in beams.items():
             for name, s in options.items():
                 step = total + s - (REPEAT_COST if name in recent else 0.0)
-                key = (recent + (name,))[-4:]
+                # no play leaves the cycle where it was
+                key = recent if name == NONE else (recent + (name,))[-4:]
                 if key not in grown or step > grown[key][0]:
                     grown[key] = (step, path + (name,))
-        best = sorted(grown.items(), key=lambda kv: kv[1][0], reverse=True)[:BEAM]
-        beams = dict(best)
+        beams = dict(sorted(grown.items(), key=lambda kv: kv[1][0], reverse=True)[:BEAM])
     return list(max(beams.values(), key=lambda v: v[0])[1])

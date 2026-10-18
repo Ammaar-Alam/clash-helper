@@ -1,0 +1,110 @@
+{
+ "Archers": {
+  "Archers": 5.811,
+  "Royal Ghost": 0.336,
+  "none": 0.626
+ },
+ "Barbarians": {
+  "Barbarians": 1.0
+ },
+ "Bomber": {
+  "Bomber": 3.55
+ },
+ "Dart Goblin": {
+  "Dart Goblin": 7.0
+ },
+ "Earthquake": {
+  "none": 1.223
+ },
+ "Electro Giant": {
+  "Mega Knight": 1.0
+ },
+ "Electro Spirit": {
+  "Archers": 0.189,
+  "Electro Spirit": 1.0
+ },
+ "Fire Spirit": {
+  "Fire Spirit": 3.0,
+  "none": 1.0
+ },
+ "Giant Snowball": {
+  "Giant Snowball": 3.0
+ },
+ "Goblin Barrel": {
+  "Goblin Barrel": 2.0
+ },
+ "Goblin Giant": {
+  "Goblin Gang": 0.02
+ },
+ "Goblins": {
+  "Goblin Gang": 1.752
+ },
+ "Inferno Dragon": {
+  "Skeletons": 0.397
+ },
+ "Knight": {
+  "Royal Ghost": 0.664
+ },
+ "Lava Hound": {
+  "Bomber": 0.45,
+  "Fire Spirit": 1.0
+ },
+ "Little Prince": {
+  "Princess": 0.233
+ },
+ "Mega Knight": {
+  "Mega Knight": 3.176
+ },
+ "Mini P.E.K.K.A": {
+  "none": 2.0
+ },
+ "Minions": {
+  "Minions": 2.0
+ },
+ "Musketeer": {
+  "Musketeer": 2.0
+ },
+ "Poison": {
+  "none": 2.722
+ },
+ "Princess": {
+  "Princess": 4.767
+ },
+ "Rage": {
+  "none": 1.869
+ },
+ "Royal Ghost": {
+  "Royal Ghost": 3.0,
+  "none": 0.374
+ },
+ "Royal Recruits": {
+  "none": 0.606
+ },
+ "Skeleton Barrel": {
+  "Skeleton Barrel": 4.0
+ },
+ "Skeletons": {
+  "Skeleton Army": 4.0,
+  "Skeletons": 4.603,
+  "Witch": 1.0,
+  "none": 1.394
+ },
+ "Spear Goblins": {
+  "Goblin Gang": 1.227,
+  "none": 1.0
+ },
+ "Tornado": {
+  "none": 2.0
+ },
+ "Valkyrie": {
+  "Valkyrie": 1.0
+ },
+ "Witch": {
+  "Mega Knight": 0.824,
+  "Witch": 2.0,
+  "none": 1.0
+ },
+ "Zap": {
+  "none": 3.186
+ }
+}
