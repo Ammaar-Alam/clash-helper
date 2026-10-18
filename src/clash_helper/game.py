@@ -8,6 +8,7 @@ tracked units around it say what it was and follow it down the lane.
 from __future__ import annotations
 
 import math
+import statistics
 import threading
 import time
 from collections import Counter
@@ -27,6 +28,7 @@ NAME_SECONDS = 1.0  # how long after a deploy timer the units around it vote on 
 CLOCK_MERGE = 70  # px, one deploy timer seen over several frames
 CLOCK_SECONDS = 2.2  # a timer shows about this long counted from the detector's first sight of it
 MATCH_GONE_SECONDS = 3.0
+CLOCK_READ_SECONDS = 2.0  # how long the match clock is read once a match shows up
 REGULATION = 180  # seconds on the clock when a match starts
 THREAT_LOST = 1.2  # seconds a tracked unit can go unseen before it counts as dead
 SAME_SPELL_SECONDS = 2.0
@@ -190,6 +192,7 @@ class Match:
         self.deck_from_api = False
         self.guess: list[str] | None = None  # their deck worked out from play, all 8 seen or a bot's preset
         self.started: float | None = None
+        self.starts: list[float] = []  # match start as each early clock read puts it
         self.last_seen = 0.0
         self.pending: list[Pending] = []
         self.clocks: list[tuple[int, int, float]] = []
@@ -274,7 +277,7 @@ class Match:
         obs = Observation(now, vision.in_match(frame))
         if not obs.in_match:
             return obs
-        if self.started is None:
+        if self.started is None or now - self.first_frame < CLOCK_READ_SECONDS:
             obs.time_left = vision.time_left(frame)
         if self.lookup and self.lookup_state == "todo" and api.token():
             self._lookup_opponent(frame, now)
@@ -308,13 +311,16 @@ class Match:
                 self._reset()
             return View(in_match=False) if self.started is None else self._view(now)
         if self.started is None:
-            self.first_frame = now
-            # the helper often notices a match a few seconds in, the clock says how many
-            left = obs.time_left
-            elapsed = REGULATION - left if left is not None and 0 < left <= REGULATION else 0
-            self.started = now - elapsed
-            self.opp.last_time = self.started
+            self.first_frame = self.started = self.opp.last_time = now
             threading.Thread(target=self._load_my_deck, daemon=True).start()
+        if obs.time_left is not None and 0 < obs.time_left <= REGULATION:
+            # the helper often notices a match a few seconds in, the clock says how many. A few reads
+            # outvote one that failed or caught the clock mid change
+            self.starts.append(now - (REGULATION - obs.time_left))
+            started = statistics.median(self.starts)
+            if started != self.started:
+                self.started = started
+                self._replay(self._names())
         self.last_seen = now
 
         multiplier = self.multiplier = obs.multiplier
