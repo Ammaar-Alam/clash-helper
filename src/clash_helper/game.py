@@ -19,7 +19,7 @@ from clash_helper import api, bots, confusion, kcr, vision
 from clash_helper.advisor import Call, MyPlay, Situation, Threat, advise
 from clash_helper.board import LANES, Board, BoardReader, lane
 from clash_helper.cards import card
-from clash_helper.decode import NONE, Evidence, best, decode
+from clash_helper.decode import NONE, Evidence, best, decode, expected_cost
 from clash_helper.hand import HandReader
 from clash_helper.tracker import UNKNOWN, Opponent
 
@@ -37,6 +37,7 @@ ROLLING = {"The Log", "Barbarian Barrel", "Goblin Barrel"}
 CHAIN = (1.0, 250)  # seconds and px within which a spell the tracker lost and found again is the same cast
 BIRTH_CONF = 0.6  # a new enemy unit this confident is a play even without a visible timer
 BIRTH_SIGHTINGS = 4  # its first sightings that may settle its side, single frames get it wrong
+LATE_UNIT = 3.5  # seconds after its timer a slow unit may still show up, behind their king tower for one
 REAPPEAR = (4.0, 220)  # seconds and px within which a "new" unit is an old one the tracker lost
 # cards that put the same units on the arena as another card, a child near its parent is no new play
 SPAWNS = {
@@ -436,7 +437,12 @@ class Match:
             if t.judged or t.sightings > BIRTH_SIGHTINGS or t.side < 2 or t.cards[t.card] < BIRTH_CONF:
                 continue
             t.judged = True
-            if not self._known(k, t, t.first):
+            named = self._named_landing(t, at)
+            if named is not None:
+                # a slow unit showing up on a timer that was already named, it says what that play was
+                named.votes[t.card] += t.cards[t.card] / max(1, sum(t.cards.values()))
+                self._rename()
+            elif not self._known(k, t, t.first):
                 self.pending.append(Pending(t.x, t.y, t.first, self.multiplier, source="birth"))
                 self.threat = Threat(UNKNOWN, t.x, t.first, t.y, last_seen=at)
                 self.answered = False
@@ -518,6 +524,11 @@ class Match:
         self.next_key -= 1
         self.alias[u.track] = self.next_key
         return self.next_key
+
+    def _named_landing(self, t: Track, at: float) -> Pending | None:
+        """A timer landing right where a new unit stands that was named a moment ago."""
+        return next((p for p, e in reversed(self.events) if not e.spell and p.source in ("timer", "bolt")
+                     and 0 <= at - p.time <= LATE_UNIT and p.covers(t.x, t.y)), None)
 
     def _my_pocket(self, x: int, at: float) -> bool:
         """Whether you may have just deployed there, past the river where you took their tower."""
@@ -654,13 +665,18 @@ class Match:
         else:
             # a deck learned from play holds at most 8 cards, the ones the detector backed most
             keep = self._learned_deck(names)
-        for (p, _), name in zip(self.events, names):
+        for (p, evidence), name in zip(self.events, names):
             if name == NONE:
                 continue  # a spawn or an effect, not a play
             name = name if name in keep else UNKNOWN
             played = card(name) if name != UNKNOWN else None
-            opp.play(name, played.cost if played else UNNAMED_COST, p.time, p.multiplier,
-                     champion=bool(played and played.has("champion")))
+            # their looked up deck and the cycle pin a name down, otherwise a costly card read with
+            # little confidence would throw their elixir far off
+            if played and self.deck_from_api:
+                cost = played.cost
+            else:
+                cost = expected_cost(evidence, deck, self.levels) if evidence.votes else UNNAMED_COST
+            opp.play(name, cost, p.time, p.multiplier, champion=bool(played and played.has("champion")))
         self.opp = opp
         self.debug = [(p, dict(p.votes), name) for (p, _), name in zip(self.events, names)]
 

@@ -4,17 +4,19 @@
  },
  "Archers": {
   "Archers": 11.328,
-  "Royal Ghost": 0.626,
+  "Mega Knight": 0.648,
+  "Royal Ghost": 0.58,
+  "Royal Hogs": 0.209,
   "Valkyrie": 1.254,
   "none": 1.0
  },
  "Baby Dragon": {
   "Baby Dragon": 3.187,
-  "Skeletons": 0.183,
-  "none": 1.0
+  "Skeletons": 0.183
  },
  "Balloon": {
-  "Balloon": 1.0
+  "Balloon": 1.0,
+  "Hog Rider": 0.5
  },
  "Barbarians": {
   "Barbarians": 1.0
@@ -24,7 +26,7 @@
   "Battle Ram": 2.531
  },
  "Bomber": {
-  "Bomber": 3.102
+  "Bomber": 3.226
  },
  "Bowler": {
   "Bowler": 2.0
@@ -33,30 +35,32 @@
   "Dark Prince": 2.0
  },
  "Dart Goblin": {
-  "Dart Goblin": 11.909,
-  "Skeletons": 0.565,
+  "Dart Goblin": 11.593,
+  "Skeletons": 0.527,
   "none": 1.0
  },
  "Earthquake": {
   "none": 0.398
  },
  "Electro Giant": {
-  "Mega Knight": 0.572,
-  "Minions": 0.224
+  "Mega Knight": 1.057,
+  "Minions": 0.175
  },
  "Electro Spirit": {
   "Archers": 0.214,
-  "Electro Spirit": 8.502
+  "Dart Goblin": 1.1,
+  "Electro Spirit": 8.502,
+  "Mega Knight": 0.266,
+  "Skeletons": 0.234
  },
  "Electro Wizard": {
   "Electro Wizard": 4.245
  },
  "Elixir Golem": {
-  "Skeletons": 0.296
+  "Skeletons": 0.209
  },
  "Fire Spirit": {
-  "Fire Spirit": 5.216,
-  "Skeletons": 0.704
+  "Fire Spirit": 5.36
  },
  "Fireball": {
   "Fireball": 2.0,
@@ -65,7 +69,7 @@
  "Giant": {
   "Electro Wizard": 0.327,
   "Giant": 2.0,
-  "Mega Knight": 1.0,
+  "Mega Knight": 0.6,
   "Valkyrie": 0.071,
   "none": 1.0
  },
@@ -85,43 +89,46 @@
   "Goblin Gang": 0.013
  },
  "Goblins": {
-  "Goblin Gang": 5.142,
+  "Dart Goblin": 0.1,
+  "Goblin Gang": 5.466,
   "Ice Spirit": 0.18
  },
  "Hog Rider": {
-  "Hog Rider": 1.556
+  "Hog Rider": 1.383,
+  "Witch": 0.236
  },
  "Ice Spirit": {
+  "Goblin Gang": 0.409,
   "Ice Spirit": 6.74,
   "Knight": 0.5
  },
  "Ice Wizard": {
-  "Ice Wizard": 3.0
+  "Ice Wizard": 3.0,
+  "Skeleton Army": 0.047
  },
  "Inferno Dragon": {
   "Skeletons": 0.324
  },
  "Inferno Tower": {
-  "Inferno Tower": 3.909
+  "Inferno Tower": 3.818
  },
  "Knight": {
   "Knight": 4.0,
-  "Royal Ghost": 0.374,
+  "Royal Ghost": 0.236,
   "none": 2.0
  },
  "Lava Hound": {
-  "Bomber": 0.771,
-  "Fire Spirit": 0.784,
+  "Bomber": 0.647,
+  "Fire Spirit": 0.64,
   "Princess": 0.352
  },
  "Little Prince": {
   "Princess": 0.109
  },
  "Mega Knight": {
-  "Mega Knight": 10.768,
+  "Mega Knight": 10.116,
   "Prince": 0.335,
-  "Royal Hogs": 0.104,
-  "none": 0.5
+  "Royal Hogs": 0.065
  },
  "Mega Minion": {
   "Mega Minion": 2.0
@@ -132,11 +139,11 @@
  "Mini P.E.K.K.A": {
   "Archers": 0.329,
   "Inferno Tower": 0.091,
+  "Wizard": 0.181,
   "none": 1.0
  },
  "Minions": {
-  "Minions": 3.42,
-  "none": 2.0
+  "Minions": 4.251
  },
  "Musketeer": {
   "Musketeer": 2.0
@@ -151,12 +158,12 @@
  },
  "Prince": {
   "Electro Wizard": 0.365,
-  "Prince": 5.665
+  "Prince": 5.564
  },
  "Princess": {
-  "Goblin Gang": 1.0,
-  "Princess": 10.827,
-  "none": 2.0
+  "Inferno Tower": 0.091,
+  "Princess": 13.827,
+  "none": 1.0
  },
  "Rage": {
   "The Log": 1.0,
@@ -168,39 +175,44 @@
  },
  "Royal Ghost": {
   "Electro Wizard": 0.062,
-  "Royal Ghost": 3.0,
+  "Royal Ghost": 3.184,
   "none": 1.0
  },
  "Royal Giant": {
+  "Skeletons": 0.34,
   "Valkyrie": 0.065,
   "none": 0.514
  },
  "Royal Hogs": {
   "Mega Minion": 1.0,
-  "Royal Hogs": 3.896,
-  "none": 1.0
+  "Royal Hogs": 4.726
  },
  "Skeleton Barrel": {
-  "Skeleton Barrel": 3.909
+  "Skeleton Barrel": 3.678
  },
  "Skeleton Dragons": {
-  "Skeleton Army": 0.029
+  "Skeleton Army": 0.025
  },
  "Skeletons": {
-  "Dart Goblin": 0.091,
-  "Hog Rider": 0.444,
+  "Dart Goblin": 1.206,
+  "Goblins": 2.0,
+  "Hog Rider": 1.117,
   "Minions": 0.355,
-  "Skeleton Army": 6.971,
-  "Skeleton Barrel": 0.091,
-  "Skeletons": 7.928,
-  "none": 1.992
+  "Skeleton Army": 6.889,
+  "Skeleton Barrel": 0.322,
+  "Skeletons": 8.061,
+  "Witch": 3.111,
+  "Wizard": 1.0,
+  "none": 1.257
  },
  "Spear Goblins": {
   "Bomber": 0.127,
-  "Goblin Gang": 6.845,
+  "Goblin Gang": 7.054,
   "Knight": 0.5,
   "Princess": 0.712,
-  "none": 1.265
+  "Skeleton Army": 0.039,
+  "Skeletons": 0.122,
+  "none": 1.0
  },
  "Tesla": {
   "none": 1.0
@@ -214,17 +226,20 @@
  },
  "Valkyrie": {
   "Battle Ram": 0.469,
-  "Valkyrie": 0.61
+  "Valkyrie": 1.61
  },
  "Witch": {
+  "Goblin Gang": 0.057,
   "Knight": 1.0,
-  "Mega Knight": 1.66,
+  "Mega Knight": 2.313,
+  "Minions": 0.219,
   "P.E.K.K.A": 1.0,
-  "Witch": 5.0,
-  "none": 0.728
+  "Witch": 3.652,
+  "none": 1.228
  },
  "Wizard": {
-  "Wizard": 5.0
+  "Prince": 0.101,
+  "Wizard": 4.819
  },
  "Zap": {
   "Giant Snowball": 0.543,

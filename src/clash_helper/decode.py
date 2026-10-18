@@ -55,6 +55,16 @@ def scores(evidence: Evidence, deck: list[str] | None, levels: dict[str, int]) -
     return out
 
 
+def expected_cost(evidence: Evidence, deck: list[str] | None, levels: dict[str, int]) -> float:
+    """What a play most likely cost, averaged over the cards it could be. A shaky name for a costly
+    card throws their elixir off far less this way."""
+    s = scores(evidence, deck, levels)
+    cards = [c for c in s if c != NONE]
+    top = max(s[c] for c in cards)
+    weights = {c: math.exp(s[c] - top) for c in cards}
+    return sum(card(c).cost * w for c, w in weights.items()) / sum(weights.values())
+
+
 def best(evidence: Evidence, deck: list[str] | None = None) -> str:
     """The single most likely reading of one candidate, possibly NONE."""
     s = scores(evidence, deck, {})
