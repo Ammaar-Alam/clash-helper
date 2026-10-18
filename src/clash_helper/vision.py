@@ -89,32 +89,44 @@ def time_left(frame: np.ndarray) -> int | None:
 
 
 SKY = slice(40, 135)  # the score strip at the top, a bolt from the sky drops straight through it
-# parts of the strip that change on their own, x0, x1, y0, y1: the shimmering name, the match clock
-# and the screen edges that pulse red in overtime
-SKY_RESTLESS = [(0, 250, 100, 135), (525, 664, 90, 135), (0, 60, 40, 135), (610, 664, 40, 135)]
+# parts of the strip that change on their own or never show anything, x0, x1, y0, y1: the shimmering
+# name, the match clock, the screen edges that pulse red in overtime and the camera notch
+SKY_RESTLESS = [(0, 250, 100, 135), (525, 664, 90, 135), (538, 664, 40, 135), (0, 72, 40, 135), (234, 440, 36, 100)]
+SKY_ROWS = 40  # a column is judged on its open rows and needs this many, under the notch only the king tower shows
+BOLT_WIDE = 8  # windows near the brightest one that may light up too, an emote or a screen shift lights many
+_SKY_OPEN = np.ones((SKY.stop - SKY.start, 664), bool)
+for _x0, _x1, _y0, _y1 in SKY_RESTLESS:
+    _SKY_OPEN[max(0, _y0 - SKY.start) : _y1 - SKY.start, _x0:_x1] = False
 _RING = np.zeros((2 * 92 + 41, 2 * 120 + 41), np.float32)
 cv2.ellipse(_RING, (140, 112), (120, 92), 0, 0, 360, 1.0, 9)
 _RING /= _RING.sum()
 
 
 def sky(frame: np.ndarray) -> np.ndarray:
-    """Brightness of the top strip without its restless parts, compare two frames with sky_bolt."""
-    v = _hsv(frame[SKY])[..., 2].astype(np.int16)
-    for x0, x1, y0, y1 in SKY_RESTLESS:
-        v[y0 - SKY.start : y1 - SKY.start, x0:x1] = 0
-    return v
+    """Brightness of the top strip, compare two frames with sky_bolt."""
+    return _hsv(frame[SKY])[..., 2].astype(np.int16)
+
+
+def _bands(rows: np.ndarray) -> np.ndarray:
+    """Per row, whether anything in each 12 px window is set, a bolt wanders a few pixels."""
+    width = rows.shape[1] // 4 * 4
+    cols = rows[:, :width].reshape(rows.shape[0], -1, 4).any(axis=2)
+    return np.stack([cols[:, i : i + cols.shape[1] - 2] for i in range(3)]).any(axis=0)
+
+
+_SKY_OPEN_ROWS = _bands(_SKY_OPEN).sum(axis=0)
 
 
 def sky_bolt(now_sky: np.ndarray, before: np.ndarray) -> tuple[float, int]:
-    """How much of a thin column brightened through the top strip, and where. A Zap and an
-    Electro Wizard both drop in as a bolt from the sky."""
-    rose = (now_sky - before) > 25
-    width = rose.shape[1] // 4 * 4
-    cols = rose[:, :width].reshape(rose.shape[0], -1, 4).any(axis=2)
-    # a bolt wanders a few pixels, so any brightening in a 12 px window counts for that row
-    band = np.stack([cols[:, i : i + cols.shape[1] - 2] for i in range(3)]).any(axis=0)
-    share = band.mean(axis=0)
+    """How much of a thin column brightened through the open part of the top strip, and where.
+    A Zap and an Electro Wizard both drop in as a bolt from the sky."""
+    risen = _bands(((now_sky - before) > 25) & _SKY_OPEN).sum(axis=0)
+    share = np.where(_SKY_OPEN_ROWS >= SKY_ROWS, risen / np.maximum(_SKY_OPEN_ROWS, 1), 0.0)
     best = int(np.argmax(share))
+    # a bolt is thin, the windows 40 px around it stay mostly dark
+    around = share[max(0, best - 10) : best + 11]
+    if (around >= share[best] / 2).sum() > BOLT_WIDE:
+        return 0.0, best * 4 + 6
     return round(float(share[best]), 3), best * 4 + 6
 
 

@@ -1,4 +1,4 @@
-"""Always-on-top window parked to the left of the phone, drawn as a small web page."""
+"""Window parked to the left of the phone, drawn as a small web page."""
 
 from __future__ import annotations
 

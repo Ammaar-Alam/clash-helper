@@ -36,6 +36,7 @@ SPELL_TRAVEL = 80  # px a spell must roll or fly before its direction tells whos
 ROLLING = {"The Log", "Barbarian Barrel", "Goblin Barrel"}
 CHAIN = (1.0, 250)  # seconds and px within which a spell the tracker lost and found again is the same cast
 BIRTH_CONF = 0.6  # a new enemy unit this confident is a play even without a visible timer
+BIRTH_SIGHTINGS = 4  # its first sightings that may settle its side, single frames get it wrong
 REAPPEAR = (4.0, 220)  # seconds and px within which a "new" unit is an old one the tracker lost
 # cards that put the same units on the arena as another card, a child near its parent is no new play
 SPAWNS = {
@@ -58,7 +59,7 @@ SPELL_SPAWNS = {"Goblin Barrel": {"Goblins"}, "Graveyard": {"Skeletons"}, "Barba
                 "Royal Delivery": {"Royal Recruits"}, "Skeleton Barrel": {"Skeletons"}}
 SPELL_SPAWN_SECONDS = 4.0
 # signal thresholds from research/spell_signals.py, with the card in their deck and without
-BOLT = (0.4, 0.6)  # share of the top strip a bolt from the sky lights up
+BOLT = (0.4, 0.9)  # share of the top strip a bolt from the sky lights up
 BOLT_CARDS = {"Zap", "Electro Wizard"}  # both drop in as a bolt, a unit left under it tells which
 BOLT_Y = 500  # where a bolt's landing is assumed until a unit shows the spot
 ARROWS_RING = (0.25, 0.45)  # strength of the salmon impact ring
@@ -101,6 +102,7 @@ class Track:
     x0: int = 0  # where it was first seen, a spell's direction of travel gives away its side
     y0: int = 0
     peak: float = 0.0  # most confident single detection
+    judged: bool = False  # whether it was already weighed as a new enemy play
     since: dict[str, float] = field(default_factory=dict)  # when each class first showed, a new unit can take an old id
 
     @property
@@ -368,10 +370,10 @@ class Match:
 
     def _bar(self, cards: set[str], bars: tuple[float, float], deck: set[str]) -> float:
         """How strong a mark must be to count. The marks also flash for other reasons, so a weak one
-        counts when their deck holds one of the cards and none does when their looked up deck holds none."""
+        counts when their deck holds one of the cards and none does when their known or guessed deck holds none."""
         if cards & deck:
             return bars[0]
-        return math.inf if self.deck_from_api else bars[1]
+        return math.inf if self.deck_from_api or self.guess else bars[1]
 
     def _land_cue(self, name: str, x: int, y: int, when: float) -> None:
         """A spell found by its mark rather than the detector, once per cast and never your own."""
@@ -428,8 +430,11 @@ class Match:
 
         # a new enemy unit is a play even when its timer was hidden, behind their king tower for one
         for k, t in troops:
-            # decide on its second sighting, a single frame often gets the side wrong
-            if t.sightings == 2 and t.side == 2 and t.cards[t.card] >= BIRTH_CONF and not self._known(k, t, t.first):
+            # decide once its first sightings lean their way, a single frame often gets the side wrong
+            if t.judged or t.sightings > BIRTH_SIGHTINGS or t.side < 2 or t.cards[t.card] < BIRTH_CONF:
+                continue
+            t.judged = True
+            if not self._known(k, t, t.first):
                 self.pending.append(Pending(t.x, t.y, t.first, self.multiplier, source="birth"))
                 self.threat = Threat(UNKNOWN, t.x, t.first, t.y, last_seen=at)
                 self.answered = False
@@ -441,7 +446,9 @@ class Match:
             for k, t in troops:
                 if not t.enemy or abs(t.x - p.x) >= 70 or not (p.source == "bolt" or -40 < t.y - p.y < 110):
                     continue
-                new = {c: v for c, v in t.cards.items() if t.since[c] >= p.time - VOTE_AGE}
+                # an old unit's new class must hold for a couple of frames, a dying unit flickers
+                fresh = t.first >= p.time - VOTE_AGE
+                new = {c: v for c, v in t.cards.items() if t.since[c] >= p.time - VOTE_AGE and (fresh or v >= 1.0)}
                 if new:
                     here += 1
                     if p.source == "bolt" and not p.votes:
@@ -552,6 +559,9 @@ class Match:
                 return True
         # a timer already marked this landing
         if any(p.covers(t.x, t.y) and at - p.time < NAME_SECONDS for p in self.pending):
+            return True
+        # a card you just played, its side misread
+        if self._cast_by_me(t.card, at):
             return True
         # units from a spell they just cast, a Goblin Barrel's goblins for one
         if any(t.card in SPELL_SPAWNS.get(name, ()) and 0 <= at - when <= SPELL_SPAWN_SECONDS

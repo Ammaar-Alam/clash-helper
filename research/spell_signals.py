@@ -46,7 +46,7 @@ def main() -> None:
     for field, cards in SIGNALS.items():
         labeled = sum(1 for _, truth, _, _ in data for p in truth if p["card"] in cards)
         print(f"\n== {field} ({', '.join(sorted(cards))}): {labeled} labeled across {len(data)} recordings")
-        for threshold in (0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6):
+        for threshold in (0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9):
             hit, false, minutes = 0, Counter(), Counter()
             for obs, truth, mins, deck in data:
                 holds = bool(cards & deck)
