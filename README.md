@@ -55,7 +55,7 @@ See [docs/design.md](docs/design.md) for the details.
 
 ## Limits
 
-- On 13 hand labeled matches, each scored with what was learned from the other 12: 92% of enemy plays caught and 87% named right with their deck known, 91% and 85% the way the helper really runs (deck looked up or guessed). Their elixir is off by 1.3 to 1.8 on average, and a play shows up about 1.7 s after the card leaves their hand.
+- On 13 hand labeled matches, each scored with what was learned from the other 12: 92% of enemy plays caught and 88% named right with their deck known, 90% and 84% the way the helper really runs (deck looked up or guessed). Their elixir is off by 1.2 to 1.7 on average, and a play shows up about 1.2 s after the card leaves their hand.
 - The detector was trained in 2024. It never sees Vines, rarely sees a Rocket in flight, and mixes up some newer evolved skins until it is retrained on recent matches.
 - 1v1 trophy matches only.
 
