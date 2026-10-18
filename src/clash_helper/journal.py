@@ -99,6 +99,7 @@ class Journal:
             "opponent": ended.get("opponent", ""),
             "their_deck": ended.get("deck", []),
             "deck_from_api": ended.get("deck_from_api", False),
+            "deck_guessed": ended.get("deck_guessed", False),
             "lookup": ended.get("lookup", ""),
             "my_deck": [c["name"] for c in match.my_deck] if match.my_deck else [],
             "result": None,

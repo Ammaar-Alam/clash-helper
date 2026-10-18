@@ -2,6 +2,7 @@
 
     python research/report.py                  # deck known
     python research/report.py --learned        # deck learned from play
+    python research/report.py --realistic      # deck known only where the clan lookup finds them
     python research/report.py --detector-only  # without learned class meanings
 
 Each recording is scored with class meanings learned from the other recordings only
@@ -67,7 +68,8 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         for item in items:
             held_out(item["id"], rows, Path(tmp))
-            r = score(item, json.loads(Path(item["labels"]).read_text()), known, False)
+            looked_up = item.get("lookup", False) if "--realistic" in sys.argv else known
+            r = score(item, json.loads(Path(item["labels"]).read_text()), looked_up, False)
             results.append(r)
             if cv2.VideoCapture(item["video"]).get(cv2.CAP_PROP_FRAME_WIDTH) >= SHARP:
                 sharp.append(r)

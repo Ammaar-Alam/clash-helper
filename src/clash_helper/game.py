@@ -302,7 +302,8 @@ class Match:
             if self.started is not None and now - self.last_seen > MATCH_GONE_SECONDS:
                 # keep what happened for the journal, the next match starts clean
                 self.ended = {"plays": list(self.debug), "opponent": self.opponent, "deck": list(self.opp.deck),
-                              "lookup": self.lookup_note, "deck_from_api": self.deck_from_api}
+                              "lookup": self.lookup_note, "deck_from_api": self.deck_from_api,
+                              "deck_guessed": bool(self.guess)}
                 self._reset()
             return View(in_match=False) if self.started is None else self._view(now)
         if self.started is None:
