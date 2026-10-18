@@ -20,7 +20,7 @@ NONE = confusion.NONE
 BEAM = 300
 REPEAT_COST = 3.0  # nats, a repeat within 4 plays needs strong evidence
 # how believable a candidate is before looking at what the detector saw, by how it was found
-NONE_BIAS = {"timer": -2.0, "birth": -0.5, "spell": 0.0}
+NONE_BIAS = {"timer": -2.0, "bolt": -2.0, "birth": -0.5, "spell": 0.0}
 
 
 @dataclass

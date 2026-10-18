@@ -1,23 +1,28 @@
 """Which kind of error the opponent elixir error comes from.
 
-Feeds the elixir model the helper's plays with one kind of error repaired at a time:
-wrong names fixed, then missed plays added, then false plays removed.
+    python research/elixir_breakdown.py
+
+Starts from the live estimate, as the helper knew it frame by frame, then feeds the elixir model the
+final plays with one kind of error repaired at a time: every play known the moment it happened, wrong
+names fixed, missed plays added, false plays removed. Tables are held out as in research/report.py.
 """
 
 from __future__ import annotations
 
 import json
 import sys
+import tempfile
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from evaluate import CAPTURES, SAME_PIXELS, SAME_SECONDS, SPELL_EARLY, run, true_elixir, truth_plays  # noqa: E402
+from evaluate import CAPTURES, pair, run, true_elixir, truth_plays  # noqa: E402
+from report import held_out  # noqa: E402
+from train import EVENTS  # noqa: E402
 
-from clash_helper.cards import card  # noqa: E402
+from clash_helper.tracker import UNKNOWN  # noqa: E402
 
-
-def curve(plays: list[dict], elixir: list, start: float) -> list[float]:
-    return true_elixir(plays, elixir, start)
+STEPS = ("live", "known at once", "names fixed", "+ missed", "+ false removed")
 
 
 def gap(a: list[float], b: list[float]) -> float:
@@ -25,49 +30,29 @@ def gap(a: list[float], b: list[float]) -> float:
 
 
 def main() -> None:
+    rows = json.loads(EVENTS.read_text())
     items = [i for i in json.loads((CAPTURES / "dataset.json").read_text()) if i["labels"]]
-    sums = [0.0] * 5
-    for item in items:
-        truth = truth_plays(json.loads(Path(item["labels"]).read_text()))
-        plays, elixir, start = run(item, True, False)
-        if start is None:
-            continue
-        pairs, used = [], set()
-        for t, x, y, name, _ in plays:
-            hit = None
-            for i, p in enumerate(truth):
-                if i in used:
-                    continue
-                spell = card(p["card"]).spell
-                early = SPELL_EARLY if spell else SAME_SECONDS
-                if not (-early <= t - p["time"] <= SAME_SECONDS):
-                    continue
-                if not spell and p.get("x", -1) >= 0 and abs(p["x"] - x) + abs(p["y"] - y) > SAME_PIXELS:
-                    continue
-                hit = i
-                break
-            if hit is not None:
-                used.add(hit)
-            pairs.append((t, name, hit))
-        actual = curve(truth, elixir, start)
-        known = lambda n: n not in ("?", "none")  # noqa: E731
-        as_seen = [{"time": t, "card": n} for t, n, _ in pairs if known(n)]
-        names_fixed = [{"time": t, "card": truth[h]["card"] if h is not None else n} for t, n, h in pairs
-                       if h is not None or known(n)]
-        with_missed = names_fixed + [truth[i] for i in range(len(truth)) if i not in used]
-        no_false = [p for p in with_missed if not (p.get("card") and p not in truth and
-                    not any(abs(p["time"] - q["time"]) < 1.6 for q in truth))]
-        timing_only = [{"time": t, "card": truth[h]["card"]} for t, n, h in pairs if h is not None] + \
-                      [truth[i] for i in range(len(truth)) if i not in used]
-        row = [gap(curve(as_seen, elixir, start), actual), gap(curve(names_fixed, elixir, start), actual),
-               gap(curve(with_missed, elixir, start), actual), gap(curve(no_false, elixir, start), actual),
-               gap(curve(timing_only, elixir, start), actual)]
-        sums = [a + b for a, b in zip(sums, row)]
-        print(f"{item['id']:<28} as seen {row[0]:.2f}  names fixed {row[1]:.2f}  + missed added {row[2]:.2f}  "
-              f"+ false removed {row[3]:.2f}  (only timing left {row[4]:.2f})", flush=True)
-    n = len(items)
-    print(f"\nmean: as seen {sums[0] / n:.2f}, names fixed {sums[1] / n:.2f}, + missed {sums[2] / n:.2f}, "
-          f"+ false removed {sums[3] / n:.2f}, timing only {sums[4] / n:.2f}")
+    sums: Counter = Counter()
+    with tempfile.TemporaryDirectory() as tmp:
+        for item in items:
+            held_out(item["id"], rows, Path(tmp))
+            truth = truth_plays(json.loads(Path(item["labels"]).read_text()))
+            plays, elixir, start = run(item, True, False)
+            hits = pair(truth, [(t, x, y, source == "spell") for t, x, y, _, source, _ in plays])
+            actual = true_elixir(truth, elixir, start)
+            # unnamed plays are left out of the replays, the live model counts them as 3 elixir
+            at_once = [{"time": p[0], "card": p[3]} for p in plays if p[3] != UNKNOWN]
+            fixed = [{"time": p[0], "card": truth[h]["card"]} if h is not None else {"time": p[0], "card": p[3]}
+                     for p, h in zip(plays, hits) if h is not None or p[3] != UNKNOWN]
+            missed = [truth[i] for i in range(len(truth)) if i not in set(hits)]
+            real = [{"time": p[0], "card": truth[h]["card"]} for p, h in zip(plays, hits) if h is not None]
+            curves = [[e for _, e, _ in elixir]] + [true_elixir(c, elixir, start) for c in
+                                                    (at_once, fixed, fixed + missed, real + missed)]
+            row = [gap(c, actual) for c in curves]
+            for name, v in zip(STEPS, row):
+                sums[name] += v
+            print(f"{item['id']:<28} " + "  ".join(f"{n} {v:.2f}" for n, v in zip(STEPS, row)), flush=True)
+    print("\nmean: " + ", ".join(f"{n} {sums[n] / len(items):.2f}" for n in STEPS))
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ tracked units around it say what it was and follow it down the lane.
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from collections import Counter
@@ -24,14 +25,16 @@ from clash_helper.tracker import UNKNOWN, Opponent
 
 NAME_SECONDS = 1.4  # how long after a deploy timer the units around it vote on the card
 CLOCK_MERGE = 70  # px, one deploy timer seen over several frames
-CLOCK_SECONDS = 1.6
+CLOCK_SECONDS = 2.2  # a timer shows about this long counted from the detector's first sight of it
 MATCH_GONE_SECONDS = 3.0
 REGULATION = 180  # seconds on the clock when a match starts
 THREAT_LOST = 1.2  # seconds a tracked unit can go unseen before it counts as dead
 SAME_SPELL_SECONDS = 2.0
-SPELL_SIGHTINGS = 2  # enemy side detections of a spell before it counts as cast
-SURE_SPELL = 0.75  # or one detection this confident
-SPELL_TRAVEL = 30  # px a spell must move before its direction decides its side
+SURE_SPELL = 0.9  # a spell seen only where it lands counts once one detection is this confident
+SPELL_TRAVEL = 80  # px a spell must roll or fly before its direction tells whose it is, explosions jitter less
+# spells the detector follows across the arena, the detector's side guess for them is no help but their way is
+ROLLING = {"The Log", "Barbarian Barrel", "Goblin Barrel"}
+CHAIN = (1.0, 250)  # seconds and px within which a spell the tracker lost and found again is the same cast
 BIRTH_CONF = 0.6  # a new enemy unit this confident is a play even without a visible timer
 REAPPEAR = (4.0, 220)  # seconds and px within which a "new" unit is an old one the tracker lost
 # cards that put the same units on the arena as another card, a child near its parent is no new play
@@ -54,8 +57,10 @@ DEATH_SPAWNERS = {"Skeleton Barrel", "Battle Ram", "Golem", "Elixir Golem", "Lav
 SPELL_SPAWNS = {"Goblin Barrel": {"Goblins"}, "Graveyard": {"Skeletons"}, "Barbarian Barrel": {"Barbarians"},
                 "Royal Delivery": {"Royal Recruits"}, "Skeleton Barrel": {"Skeletons"}}
 SPELL_SPAWN_SECONDS = 4.0
-# signal thresholds from research/spell_signals.py, with the spell in their deck and without
-ZAP_BOLT = (0.4, 0.6)  # share of the top strip a falling bolt lights up
+# signal thresholds from research/spell_signals.py, with the card in their deck and without
+BOLT = (0.4, 0.6)  # share of the top strip a bolt from the sky lights up
+BOLT_CARDS = {"Zap", "Electro Wizard"}  # both drop in as a bolt, a unit left under it tells which
+BOLT_Y = 500  # where a bolt's landing is assumed until a unit shows the spot
 ARROWS_RING = (0.25, 0.45)  # strength of the salmon impact ring
 ARROWS_FLIGHT = 0.6  # seconds from launch to the ring
 CUE_SECONDS = 2.5  # one cast, seen over several frames or also by the detector
@@ -63,6 +68,7 @@ POCKET_Y = 790  # how far into your side they may deploy once your tower in that
 VOTE_AGE = 0.5  # only units that appeared around the landing vote, not bystanders already there
 ANYWHERE = {"Miner", "Goblin Drill", "Royal Delivery"}  # land on your side without a destroyed tower
 SURE_VOTES = 1.2  # summed confidence before a name may join a deck learned from play
+UNNAMED_COST = 3  # elixir assumed for a play that has no name yet
 LOOKUP_EVERY = 1.0  # seconds between name reads while the intro fades
 LOOKUP_WINDOW = 25.0
 
@@ -75,7 +81,11 @@ class Pending:
     multiplier: float
     votes: Counter = field(default_factory=Counter)  # card -> summed confidence
     tracks: set[int] = field(default_factory=set)
-    source: str = "timer"  # timer, birth or spell
+    source: str = "timer"  # timer, birth, bolt or spell
+
+    def covers(self, x: int, y: int) -> bool:
+        """Whether a spot belongs to this landing, a bolt from the sky only gives its column."""
+        return abs(self.x - x) < 150 and (self.source == "bolt" or abs(self.y - y) < 150)
 
 
 @dataclass
@@ -90,6 +100,8 @@ class Track:
     sightings: int = 0
     x0: int = 0  # where it was first seen, a spell's direction of travel gives away its side
     y0: int = 0
+    peak: float = 0.0  # most confident single detection
+    since: dict[str, float] = field(default_factory=dict)  # when each class first showed, a new unit can take an old id
 
     @property
     def flying_down(self) -> bool | None:
@@ -201,6 +213,9 @@ class Match:
         self.last_rule = ""
         self.enemies: list[tuple[int, int]] = []
         self.tracks: dict[int, Track] = {}
+        self.alias: dict[int, int] = {}  # track ids the tracker reused or changed -> the track they belong to
+        self.next_key = 0  # keys for tracks split off a reused id count down from here
+        self.last_bolt = -10.0
         self.spells_seen: dict[int, float] = {}
         self.spell_casts: list[tuple[str, float]] = []
         self.last_seen_units = 0.0
@@ -312,30 +327,20 @@ class Match:
             self._see(obs.units, obs.units_at)
 
         for x, y in obs.clocks:
-            if y > vision.ARENA_BOTTOM - 120 or x > 615:
-                continue  # emote bubbles and the crown counter look like timers
-            if any(abs(x - cx) + abs(y - cy) < CLOCK_MERGE and now - t < CLOCK_SECONDS for cx, cy, t in self.clocks):
-                continue
-            self.clocks.append((x, y, now))
-            if any(abs(p.x - x) < 150 and abs(p.y - y) < 150 and now - p.time < NAME_SECONDS for p in self.pending):
-                continue  # the unit itself was seen landing a moment earlier
-            if self._spawning(x, y, now):
-                continue  # a Skeleton Barrel bursting or a hut spawning drops its units with a timer too
-            self.pending.append(Pending(x, y, now, multiplier))
-            # react the moment it lands, the name and the track follow a moment later
-            self.threat = Threat(UNKNOWN, x, now, y, last_seen=now)
-            self.answered = False
+            self._timer(x, y, now)
         self.clocks = [c for c in self.clocks if now - c[2] < CLOCK_SECONDS]
 
-        # the two spells the detector never sees, by their own marks on the screen. The marks also
-        # flash for other reasons, so a weak one only counts when their deck is known to hold the spell
+        # cards the detector misses, by their own marks on the screen
         deck = set(self.opp.deck) if self.deck_from_api else self._learned_deck(self._names())
         settled = now - self.first_frame > 1.0  # the first comparison of a match flashes on its own
         share, x = obs.bolt if settled else (0.0, 0)
-        if share >= (ZAP_BOLT[0] if "Zap" in deck else ZAP_BOLT[1]):
-            self._land_cue("Zap", x, 500, now)
+        if share >= self._bar(BOLT_CARDS, BOLT, deck) and now - self.last_bolt > CUE_SECONDS:
+            self.last_bolt = now
+            # a unit landing high up pokes into the strip too, its own timer already counts it
+            if not any(abs(p.x - x) < 100 and now - p.time < NAME_SECONDS for p in self.pending):
+                self.pending.append(Pending(x, BOLT_Y, now, multiplier, source="bolt"))
         strength, x, y = obs.ring if settled else (0.0, 0, 0)
-        if strength >= (ARROWS_RING[0] if "Arrows" in deck else ARROWS_RING[1]):
+        if strength >= self._bar({"Arrows"}, ARROWS_RING, deck):
             # the ring shows at impact, the volley left their tower a little earlier
             self._land_cue("Arrows", x, y, now - ARROWS_FLIGHT)
 
@@ -343,6 +348,29 @@ class Match:
             self.pending.remove(p)
             self._land(p)
         return self._view(now)
+
+    def _timer(self, x: int, y: int, now: float) -> None:
+        """An enemy deploy timer, the first sign of a card landing there."""
+        if y > vision.ARENA_BOTTOM - 120 or x > 615:
+            return  # emote bubbles and the crown counter look like timers
+        if any(abs(x - cx) + abs(y - cy) < CLOCK_MERGE and now - t < CLOCK_SECONDS for cx, cy, t in self.clocks):
+            return  # the same timer seen again
+        self.clocks.append((x, y, now))
+        if any(p.covers(x, y) and now - p.time < NAME_SECONDS for p in self.pending):
+            return  # the unit itself was seen landing a moment earlier
+        if self._spawning(x, y, now):
+            return  # a Skeleton Barrel bursting or a hut spawning drops its units with a timer too
+        self.pending.append(Pending(x, y, now, self.multiplier))
+        # react the moment it lands, the name and the track follow a moment later
+        self.threat = Threat(UNKNOWN, x, now, y, last_seen=now)
+        self.answered = False
+
+    def _bar(self, cards: set[str], bars: tuple[float, float], deck: set[str]) -> float:
+        """How strong a mark must be to count. The marks also flash for other reasons, so a weak one
+        counts when their deck holds one of the cards and none does when their looked up deck holds none."""
+        if cards & deck:
+            return bars[0]
+        return math.inf if self.deck_from_api else bars[1]
 
     def _land_cue(self, name: str, x: int, y: int, when: float) -> None:
         """A spell found by its mark rather than the detector, once per cast and never your own."""
@@ -360,17 +388,29 @@ class Match:
 
     def _see(self, units: list[kcr.Unit], at: float) -> None:
         """Fold one detector result into the tracks, the board, the open deploys and the threat."""
+        self.reader.see(units, at)
+        # the detector spots a deploy timer while its red wedge is still too thin for the screen check,
+        # it now and then takes one of yours for theirs, but those land on your half
+        for u in units:
+            if u.name == "clock" and u.enemy and (u.top + u.bottom) // 2 <= vision.RIVER_Y + 20:
+                self._timer(u.x, (u.top + u.bottom) // 2, at)
+
         current: list[tuple[int, Track]] = []
+        present = {self.alias.get(u.track, u.track) for u in units}
         for u in units:
             if not u.card:
                 continue
-            t = self.tracks.setdefault(u.track, Track(first=at, born_enemy=u.enemy, x0=u.x, y0=u.bottom))
+            k = self._key(u, at, present)
+            t = self.tracks.setdefault(k, Track(first=at, born_enemy=u.enemy, x0=u.x, y0=u.bottom))
             t.side += 1 if u.enemy else -1
             t.sightings += 1
             t.cards[u.card] += u.conf
+            t.peak = max(t.peak, u.conf)
+            t.since.setdefault(u.card, at)
             t.x, t.y, t.last = u.x, u.bottom, at
-            current.append((u.track, t))
+            current.append((k, t))
         self.tracks = {k: t for k, t in self.tracks.items() if at - t.last < 5}
+        self.alias = {a: k for a, k in self.alias.items() if k in self.tracks}
 
         troops = [(k, t) for k, t in current if not card(t.card).spell]
         self.enemies = [(t.x, t.y) for _, t in troops if t.enemy]
@@ -393,28 +433,37 @@ class Match:
                 self.threat = Threat(UNKNOWN, t.x, t.first, t.y, last_seen=at)
                 self.answered = False
 
-        # units that appeared on a fresh deploy timer vote on what it was, bystanders do not
+        # units that appeared on a fresh deploy timer vote on what it was, bystanders do not. A new
+        # unit sometimes takes over the track of one that just left, so it is the class that must be new
         for p in self.pending:
             for k, t in troops:
-                if t.first < p.time - VOTE_AGE:
+                if not t.enemy or abs(t.x - p.x) >= 70 or not (p.source == "bolt" or -40 < t.y - p.y < 110):
                     continue
-                if t.enemy and abs(t.x - p.x) < 70 and -40 < t.y - p.y < 110:
-                    p.votes[t.card] += t.cards[t.card] / max(1, sum(t.cards.values()))
+                new = {c: v for c, v in t.cards.items() if t.since[c] >= p.time - VOTE_AGE}
+                if new:
+                    top = max(new, key=new.get)
+                    p.votes[top] += new[top] / max(1, sum(new.values()))
                     p.tracks.add(k)
+                    if p.source == "bolt":
+                        p.x, p.y = t.x, t.y  # the unit shows where the bolt landed
+            if p.source == "bolt" and p.votes and (self.threat is None or self.threat.time < p.time):
+                self.threat = Threat(UNKNOWN, p.x, p.time, p.y, last_seen=at)
+                self.answered = False
             if self.threat and self.threat.time == p.time and p.votes:
                 self.threat.card = p.votes.most_common(1)[0][0]
                 self.threat.track = min(p.tracks, key=lambda k: self.tracks[k].first) if p.tracks else None
 
-        # an enemy spell is a play of its own, it never shows a timer, one frame is not enough to trust it
+        # an enemy spell is a play of its own, it never shows a timer
         for k, t in current:
             if not card(t.card).spell:
                 continue
-            # their spells fly from their king tower down toward you, yours fly up, which beats a side guess
+            # their spells roll and fly down toward you and yours up, the detector's side guess for spells
+            # is no help. One seen only where it lands is theirs unless you just cast it
             direction = t.flying_down
             if direction is not None:
-                sure = direction and t.sightings >= SPELL_SIGHTINGS
+                sure = direction
             else:
-                sure = t.side >= SPELL_SIGHTINGS or (t.first == at and t.born_enemy and t.cards[t.card] >= SURE_SPELL)
+                sure = t.card not in ROLLING and t.peak >= SURE_SPELL and not self._cast_by_me(t.card, t.first)
             if sure and k not in self.spells_seen and not self._landing_effect(t, at):
                 if not any(self.tracks.get(j) and self.tracks[j].card == t.card and at - s < SAME_SPELL_SECONDS
                            for j, s in self.spells_seen.items()):
@@ -436,19 +485,48 @@ class Match:
             else:
                 self.threat = None
 
+    def _key(self, u: kcr.Unit, at: float, present: set[int]) -> int:
+        """The track a detection belongs to. The tracker loses a spell for a moment and finds it again
+        under a new id, and hands a lost unit's id to a spell or the other way round."""
+        k = self.alias.get(u.track, u.track)
+        t = self.tracks.get(k)
+        spell = card(u.card).spell
+        if t is not None and card(t.card).spell == spell:
+            return k
+        if spell:
+            for j, other in self.tracks.items():
+                if j in present or other.card != u.card or not 0 < at - other.last <= CHAIN[0]:
+                    continue
+                if abs(other.x - u.x) + abs(other.y - u.bottom) <= CHAIN[1]:
+                    self.alias[u.track] = j
+                    return j
+        if t is None:
+            return k
+        self.next_key -= 1
+        self.alias[u.track] = self.next_key
+        return self.next_key
+
+    def _cast_by_me(self, name: str, when: float) -> bool:
+        return any(p.card == name and -1.0 <= when - p.time <= 4.0 for p in self.my_plays)
+
     def _landing_effect(self, t: Track, at: float) -> bool:
         """A spell sighting on top of an enemy unit that just landed is that unit's own effect,
         the Ice Wizard's frost burst, the Electro Wizard's zap, the Mega Knight's splash."""
-        landings = [(p.x, p.y, p.time) for p in self.pending] + [
-            (p.x, p.y, p.time) for p, e in self.events if not e.spell]
-        return any(abs(x - t.x) + abs(y - t.y) <= 180 and -0.5 <= at - when <= 1.5 for x, y, when in landings)
+        landings = [*self.pending, *(p for p, e in self.events if not e.spell)]
+        return any(-0.5 <= at - p.time <= 1.5 and abs(p.x - t.x) + (0 if p.source == "bolt" else abs(p.y - t.y)) <= 180
+                   for p in landings)
 
     def _spawning(self, x: int, y: int, now: float) -> bool:
         """Whether an enemy card that drops units when it bursts or dies was just here."""
         return any(
-            t.enemy and t.card in DEATH_SPAWNERS and now - t.last <= 1.5 and abs(t.x - x) + abs(t.y - y) <= 180
+            t.enemy and t.card in DEATH_SPAWNERS and self._theirs(t) and now - t.last <= 1.5
+            and abs(t.x - x) + abs(t.y - y) <= 180
             for t in self.tracks.values()
         )
+
+    def _theirs(self, t: Track) -> bool:
+        """Whether a track is surely one of their cards, seen a few times and in their deck when it is known."""
+        return t.sightings >= 3 and (not self.deck_from_api or t.card in self.opp.deck)
 
     def _known(self, k: int, t: Track, at: float) -> bool:
         """Whether a new enemy unit belongs to something already accounted for."""
@@ -463,10 +541,10 @@ class Match:
             if 0 < gap <= 1.5 and near <= 120 and not card(other.card).spell:
                 return True
             # a spawn from a card already on the arena
-            if other.card in SPAWNS.get(t.card, ()) and gap <= 3.0 and near <= SPAWN_RADIUS:
+            if other.card in SPAWNS.get(t.card, ()) and self._theirs(other) and gap <= 3.0 and near <= SPAWN_RADIUS:
                 return True
         # a timer already marked this landing
-        if any(abs(p.x - t.x) < 150 and abs(p.y - t.y) < 150 and at - p.time < NAME_SECONDS for p in self.pending):
+        if any(p.covers(t.x, t.y) and at - p.time < NAME_SECONDS for p in self.pending):
             return True
         # units from a spell they just cast, a Goblin Barrel's goblins for one
         if any(t.card in SPELL_SPAWNS.get(name, ()) and 0 <= at - when <= SPELL_SPAWN_SECONDS
@@ -491,10 +569,14 @@ class Match:
         if now - self.last_drop > 1.5:
             return
         for gone in [c for c in self.my_hand if c and c not in hand]:
-            self.mine = MyPlay(gone, now)
+            # the card leaves the hand once the next one slides in, the elixir dropped when it was played
+            self.mine = MyPlay(gone, self.last_drop)
             self.my_plays.append(self.mine)
 
     def _land(self, p: Pending) -> None:
+        if p.source == "bolt" and not p.votes:
+            self._land_cue("Zap", p.x, p.y, p.time)  # nothing landed under the bolt
+            return
         named = p.votes.most_common(1)[0][0] if p.votes else None
         self.events.append((p, Evidence(p.votes, len(p.tracks), None, named=named, source=p.source)))
         self._rename()
@@ -553,10 +635,19 @@ class Match:
                 continue  # a spawn or an effect, not a play
             name = name if name in keep else UNKNOWN
             played = card(name) if name != UNKNOWN else None
-            opp.play(name, played.cost if played else 3, p.time, p.multiplier,
+            opp.play(name, played.cost if played else UNNAMED_COST, p.time, p.multiplier,
                      champion=bool(played and played.has("champion")))
         self.opp = opp
         self.debug = [(p, dict(p.votes), name) for (p, _), name in zip(self.events, names)]
+
+    @property
+    def their_elixir(self) -> float:
+        """Their elixir with the cards still landing already paid for, at what their hand costs on average."""
+        if not self.pending:
+            return self.opp.elixir
+        hand = [card(n).cost for n in self.opp.hand]
+        each = sum(hand) / len(hand) if hand else UNNAMED_COST
+        return max(0.0, self.opp.elixir - each * len(self.pending))
 
     def _view(self, now: float) -> View:
         hand = [card(n) if n else None for n in self.my_hand]
@@ -572,7 +663,7 @@ class Match:
             their_hand=self.opp.hand,
             maybe=self.opp.maybe,
             next_card=self.opp.next_card,
-            their_elixir=self.opp.elixir,
+            their_elixir=self.their_elixir,
             my_elixir=self.my_elixir,
             deck_known=self.opp.deck_complete,
             plays=self.opp.plays[-6:],

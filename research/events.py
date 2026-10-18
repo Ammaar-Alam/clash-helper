@@ -14,11 +14,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from evaluate import CAPTURES, SAME_PIXELS, SAME_SECONDS, SPELL_EARLY, CachedDetector, observations, truth_plays  # noqa: E402
+from evaluate import CAPTURES, CachedDetector, observations, pair, truth_plays  # noqa: E402
 
 import gzip  # noqa: E402
 
-from clash_helper.cards import card  # noqa: E402
 from clash_helper.game import Match  # noqa: E402
 
 
@@ -37,31 +36,13 @@ def candidates(item: dict) -> list:
     return events
 
 
-def pair(item: dict, events: list) -> list[dict]:
+def labeled(item: dict, events: list) -> list[dict]:
+    events = sorted(events, key=lambda pe: pe[0].time)
     truth = truth_plays(json.loads(Path(item["labels"]).read_text()))
-    used: set[int] = set()
-    rows = []
-    for p, e in sorted(events, key=lambda pe: pe[0].time):
-        best = None
-        for i, t in enumerate(truth):
-            if i in used:
-                continue
-            spell = card(t["card"]).spell
-            if spell != e.spell:
-                continue
-            early = SPELL_EARLY if spell else SAME_SECONDS
-            if not (-early <= p.time - t["time"] <= SAME_SECONDS):
-                continue
-            if not spell and t.get("x", -1) >= 0 and abs(t["x"] - p.x) + abs(t["y"] - p.y) > SAME_PIXELS:
-                continue
-            best = i
-            break
-        if best is not None:
-            used.add(best)
-        rows.append({"recording": item["id"], "time": round(p.time, 2), "x": p.x, "y": p.y, "spell": e.spell,
-                     "votes": dict(e.votes), "units": e.units, "truth": truth[best]["card"] if best is not None else "none",
-                     "deck": item["their_deck"]})
-    return rows
+    hits = pair(truth, [(p.time, p.x, p.y, e.spell) for p, e in events])
+    return [{"recording": item["id"], "time": round(p.time, 2), "x": p.x, "y": p.y, "spell": e.spell,
+             "votes": dict(e.votes), "units": e.units, "truth": truth[h]["card"] if h is not None else "none",
+             "deck": item["their_deck"]} for (p, e), h in zip(events, hits)]
 
 
 def main() -> None:
@@ -69,7 +50,7 @@ def main() -> None:
              if i["labels"] and (CAPTURES / "scans" / f"{i['id']}.json.gz").exists()]
     rows = []
     for item in items:
-        got = pair(item, candidates(item))
+        got = labeled(item, candidates(item))
         rows += got
         real = sum(r["truth"] != "none" for r in got)
         print(f"{item['id']:<28} {len(got)} candidates, {real} real plays", flush=True)

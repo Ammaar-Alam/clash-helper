@@ -2,6 +2,7 @@
 
     python research/observe.py            # every recording with a scan
     python research/observe.py match4     # some
+    python research/observe.py --marks    # recompute the spell mark signals after their code changed
 
 Needs the detector scan from scripts/scan.py. Writes captures/obs/<id>.json.gz, one
 Observation per frame at 6 fps, with tower health read once a second.
@@ -58,7 +59,8 @@ def build(item: dict) -> None:
                 obs.bolt = vision.sky_bolt(sky, last_sky)
             last_sky = sky
             obs.ring = vision.arrows_ring(frame)
-            while i + 1 < len(scan) and scan[i + 1][0] <= now + 1e-6:
+            # scan times are rounded the same way, an unrounded clock would skip every row rounded up
+            while i + 1 < len(scan) and scan[i + 1][0] <= obs.now + 1e-6:
                 i += 1
             obs.units_at, obs.units = scan[i][0], scan[i][1]
             if now - last_towers >= 1.0:
@@ -69,6 +71,23 @@ def build(item: dict) -> None:
     with gzip.open(out, "wt") as f:
         json.dump(rows, f)
     print(f"{item['id']}: {len(rows)} frames in {time.time() - started:.0f}s", flush=True)
+
+
+def refresh_marks(item: dict) -> None:
+    """Recompute the bolt and ring signals of an existing cache."""
+    path = CAPTURES / "obs" / f"{item['id']}.json.gz"
+    with gzip.open(path, "rt") as f:
+        rows = json.load(f)
+    last_sky = None
+    for row, (frame, _) in zip(rows, video_frames(Path(item["video"]), 6)):
+        if row["in_match"]:
+            sky = vision.sky(frame)
+            row["bolt"] = list(vision.sky_bolt(sky, last_sky)) if last_sky is not None else [0.0, 0]
+            last_sky = sky
+            row["ring"] = list(vision.arrows_ring(frame))
+    with gzip.open(path, "wt") as f:
+        json.dump(rows, f)
+    print(f"{item['id']}: marks refreshed", flush=True)
 
 
 def load(path: Path) -> list[Observation]:
@@ -90,9 +109,10 @@ def load(path: Path) -> list[Observation]:
 def main() -> None:
     items = [i for i in json.loads((CAPTURES / "dataset.json").read_text())
              if (CAPTURES / "scans" / f"{i['id']}.json.gz").exists()]
+    ids = [a for a in sys.argv[1:] if not a.startswith("--")]
     for item in items:
-        if not sys.argv[1:] or item["id"] in sys.argv[1:]:
-            build(item)
+        if not ids or item["id"] in ids:
+            refresh_marks(item) if "--marks" in sys.argv else build(item)
 
 
 if __name__ == "__main__":

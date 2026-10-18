@@ -1,22 +1,24 @@
-"""How well the Zap bolt and Arrows ring signals find labeled spells, across thresholds.
+"""How well the bolt and Arrows ring signals find the labeled plays they mark, across thresholds.
 
     python research/spell_signals.py
 
-A peak counts as a hit when it falls within a second or so of a labeled spell of that kind.
-Reports, per threshold, the share of labeled spells found and false peaks per minute of play.
+A peak counts as a hit when it falls within a second or so of a labeled play it marks. Reports, per
+threshold, the share of those plays found and false peaks per minute, in games whose deck holds one
+of the cards (where the helper uses the low bar) and in the rest (high bar).
 """
 
 from __future__ import annotations
 
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from evaluate import CAPTURES, truth_plays  # noqa: E402
 from observe import load  # noqa: E402
 
-SIGNALS = {"Zap": ("bolt", 0), "Arrows": ("ring", 0)}
+SIGNALS = {"bolt": {"Zap", "Electro Wizard"}, "ring": {"Arrows"}}
 WINDOW = (-0.6, 1.6)  # seconds from the labeled first frame the signal may peak
 
 
@@ -40,26 +42,28 @@ def main() -> None:
         obs = [o for o in load(CAPTURES / "obs" / f"{item['id']}.json.gz") if o.in_match]
         truth = truth_plays(json.loads(Path(item["labels"]).read_text()))
         minutes = (obs[-1].now - obs[0].now) / 60 if obs else 0
-        data.append((item["id"], obs, truth, minutes))
-    for spell, (field, index) in SIGNALS.items():
-        labeled = sum(1 for _, _, truth, _ in data for p in truth if p["card"] == spell)
-        print(f"\n== {spell}: {labeled} labeled across {len(data)} recordings")
+        data.append((obs, truth, minutes, set(item["their_deck"])))
+    for field, cards in SIGNALS.items():
+        labeled = sum(1 for _, truth, _, _ in data for p in truth if p["card"] in cards)
+        print(f"\n== {field} ({', '.join(sorted(cards))}): {labeled} labeled across {len(data)} recordings")
         for threshold in (0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6):
-            hit = false = 0
-            minutes = 0.0
-            for _, obs, truth, mins in data:
-                minutes += mins
-                found = peaks([(o.now, getattr(o, field)[index]) for o in obs], threshold)
-                times = [p["time"] for p in truth if p["card"] == spell]
+            hit, false, minutes = 0, Counter(), Counter()
+            for obs, truth, mins, deck in data:
+                holds = bool(cards & deck)
+                minutes[holds] += mins
+                found = peaks([(o.now, getattr(o, field)[0]) for o in obs], threshold)
+                times = [p["time"] for p in truth if p["card"] in cards]
                 used = set()
                 for t in found:
                     match = next((i for i, s in enumerate(times) if i not in used and WINDOW[0] <= t - s <= WINDOW[1]), None)
                     if match is None:
-                        false += 1
+                        false[holds] += 1
                     else:
                         used.add(match)
                 hit += len(used)
-            print(f"   threshold {threshold:<5} found {hit}/{labeled}   false {false} ({false / max(minutes, 1e-9):.2f} per minute)")
+            rate = {h: false[h] / max(minutes[h], 1e-9) for h in (True, False)}
+            print(f"   threshold {threshold:<5} found {hit}/{labeled}   false per minute {rate[True]:.2f} in decks "
+                  f"with it, {rate[False]:.2f} without")
 
 
 if __name__ == "__main__":

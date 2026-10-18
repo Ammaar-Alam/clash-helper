@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "research"))
 SAME_SECONDS = 1.5
 SAME_PIXELS = 130
 SPELL_EARLY = 3.5  # seconds a spell can be seen before its impact, a Goblin Barrel flies about 2.7
+SPELL_LATE = 2.0  # labels mark a spell's launch, one known only by its impact is seen up to about 2 s later
 
 
 class CachedDetector:
@@ -73,6 +74,29 @@ def observations(item: dict, match: Match, live: bool):
         yield match.observe(frame, now)
 
 
+def pair(truth: list[dict], plays: list[tuple[float, int, int, bool]]) -> list[int | None]:
+    """The labeled play each (time, x, y, is spell) play stands for, greedily in order. Spells are
+    judged by time alone since they are seen far from where they land, troops by time and place."""
+    used: set[int] = set()
+    out: list[int | None] = []
+    for t, x, y, spell in plays:
+        hit = None
+        for i, p in enumerate(truth):
+            if i in used or card(p["card"]).spell != spell:
+                continue
+            early, late = (SPELL_EARLY, SPELL_LATE) if spell else (SAME_SECONDS, SAME_SECONDS)
+            if not -early <= t - p["time"] <= late:
+                continue
+            if not spell and p.get("x", -1) >= 0 and abs(p["x"] - x) + abs(p["y"] - y) > SAME_PIXELS:
+                continue
+            hit = i
+            break
+        if hit is not None:
+            used.add(hit)
+        out.append(hit)
+    return out
+
+
 def run(item: dict, deck_known: bool, live: bool) -> tuple[list, list, float | None]:
     scan = CAPTURES / "scans" / f"{item['id']}.json.gz"
     if live or not scan.exists():
@@ -84,6 +108,7 @@ def run(item: dict, deck_known: bool, live: bool) -> tuple[list, list, float | N
     plays: list = []
     elixir: list[tuple[float, float, float]] = []  # time, estimate, multiplier
     start = None
+    shown: dict[int, float] = {}  # play -> when it first showed up
     for obs in observations(item, match, live):
         now = obs.now
         match.update(obs)
@@ -93,11 +118,14 @@ def run(item: dict, deck_known: bool, live: bool) -> tuple[list, list, float | N
             match.deck_from_api = True
         if match.started is not None:
             start = match.started
-            elixir.append((now, match.opp.elixir, match.multiplier))
+            elixir.append((now, match.their_elixir, match.multiplier))
         # names keep improving as evidence arrives, keep the latest before the match resets
         if match.debug:
+            for p, _, name in match.debug:
+                if name != "none":
+                    shown.setdefault(id(p), now)
             # candidates read as no play were dropped by the helper
-            plays = [(p.time, p.x, p.y, name, p.source) for p, _, name in match.debug if name != "none"]
+            plays = [(p.time, p.x, p.y, name, p.source, shown[id(p)]) for p, _, name in match.debug if name != "none"]
     detector.close()
     return plays, elixir, start
 
@@ -122,27 +150,18 @@ def true_elixir(plays: list[dict], elixir: list, start: float | None) -> list[fl
 def score(item: dict, labels: dict, deck_known: bool, live: bool) -> dict:
     truth = truth_plays(labels)
     plays, elixir, start = run(item, deck_known, live)
-    used: set[int] = set()
+    hits = pair(truth, [(t, x, y, source == "spell") for t, x, y, _, source, _ in plays])
+    used = {h for h in hits if h is not None}
     right = wrong = unknown = 0
     errors = []
     found = {"false": [], "wrong": [], "missed": []}
-    for t, x, y, name, source in plays:
-        def close(i: int, p: dict) -> bool:
-            # spells are labeled at impact and usually caught while still flying in
-            early = SPELL_EARLY if card(p["card"]).spell else SAME_SECONDS
-            if i in used or not (-early <= t - p["time"] <= SAME_SECONDS):
-                return False
-            # spells are judged by time alone, they are seen far from where they land
-            if p.get("x", -1) < 0 or card(p["card"]).spell:
-                return card(p["card"]).spell == card(name).spell if name != UNKNOWN else True
-            return abs(p["x"] - x) + abs(p["y"] - y) <= SAME_PIXELS
-
-        hit = next((i for i, p in enumerate(truth) if close(i, p)), None)
+    delays = []
+    for (t, x, y, name, source, shown), hit in zip(plays, hits):
         if hit is None:
             errors.append(f"false  {t:6.1f}s ({x},{y}) {name} from {source}")
             found["false"].append((name, source))
             continue
-        used.add(hit)
+        delays.append(shown - truth[hit]["time"])
         label = truth[hit]["card"]
         if name == label:
             right += 1
@@ -162,6 +181,7 @@ def score(item: dict, labels: dict, deck_known: bool, live: bool) -> dict:
     gap = sum(abs(a - b) for a, b in zip(estimate, actual)) / len(actual) if actual else float("nan")
     return {"id": item["id"], "truth": len(truth), "found": len(used), "false": len(plays) - len(used),
             "right": right, "wrong": wrong, "unknown": unknown, "elixir_error": round(gap, 2), "errors": errors,
+            "delay": round(sorted(delays)[len(delays) // 2], 2) if delays else float("nan"),
             "spells": sum(card(p["card"]).spell for p in truth),
             "spells_found": sum(card(truth[i]["card"]).spell for i in used), "breakdown": found}
 

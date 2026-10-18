@@ -88,19 +88,26 @@ def time_left(frame: np.ndarray) -> int | None:
     return None
 
 
-SKY = slice(40, 135)  # the score strip at the top, a Zap bolt drops straight through it
+SKY = slice(40, 135)  # the score strip at the top, a bolt from the sky drops straight through it
+# parts of the strip that change on their own, x0, x1, y0, y1: the shimmering name, the match clock
+# and the screen edges that pulse red in overtime
+SKY_RESTLESS = [(0, 250, 100, 135), (525, 664, 90, 135), (0, 60, 40, 135), (610, 664, 40, 135)]
 _RING = np.zeros((2 * 92 + 41, 2 * 120 + 41), np.float32)
 cv2.ellipse(_RING, (140, 112), (120, 92), 0, 0, 360, 1.0, 9)
 _RING /= _RING.sum()
 
 
 def sky(frame: np.ndarray) -> np.ndarray:
-    """Brightness of the top strip, compare two frames with sky_bolt."""
-    return _hsv(frame[SKY])[..., 2].astype(np.int16)
+    """Brightness of the top strip without its restless parts, compare two frames with sky_bolt."""
+    v = _hsv(frame[SKY])[..., 2].astype(np.int16)
+    for x0, x1, y0, y1 in SKY_RESTLESS:
+        v[y0 - SKY.start : y1 - SKY.start, x0:x1] = 0
+    return v
 
 
 def sky_bolt(now_sky: np.ndarray, before: np.ndarray) -> tuple[float, int]:
-    """How much of a thin column brightened through the top strip, and where, a Zap falling."""
+    """How much of a thin column brightened through the top strip, and where. A Zap and an
+    Electro Wizard both drop in as a bolt from the sky."""
     rose = (now_sky - before) > 25
     width = rose.shape[1] // 4 * 4
     cols = rose[:, :width].reshape(rose.shape[0], -1, 4).any(axis=2)
