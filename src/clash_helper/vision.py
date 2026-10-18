@@ -97,8 +97,9 @@ BOLT_WIDE = 8  # windows near the brightest one that may light up too, an emote 
 _SKY_OPEN = np.ones((SKY.stop - SKY.start, 664), bool)
 for _x0, _x1, _y0, _y1 in SKY_RESTLESS:
     _SKY_OPEN[max(0, _y0 - SKY.start) : _y1 - SKY.start, _x0:_x1] = False
-_RING = np.zeros((2 * 92 + 41, 2 * 120 + 41), np.float32)
-cv2.ellipse(_RING, (140, 112), (120, 92), 0, 0, 360, 1.0, 9)
+# the ring is big, at half resolution it is found as well for a sixteenth of the work
+_RING = np.zeros((92 + 21, 120 + 21), np.float32)
+cv2.ellipse(_RING, (70, 56), (60, 46), 0, 0, 360, 1.0, 5)
 _RING /= _RING.sum()
 
 
@@ -135,9 +136,10 @@ def arrows_ring(frame: np.ndarray) -> tuple[float, int, int]:
     hsv = _hsv(frame[ARENA_TOP:ARENA_BOTTOM])
     h, s, v = hsv[..., 0], hsv[..., 1], hsv[..., 2]
     mask = ((h >= 2) & (h <= 11) & (s >= 95) & (s <= 160) & (v >= 190)).astype(np.float32)
-    score = cv2.filter2D(mask, -1, _RING, borderType=cv2.BORDER_CONSTANT)
+    half = cv2.resize(mask, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+    score = cv2.filter2D(half, -1, _RING, borderType=cv2.BORDER_CONSTANT)
     _, best, _, (x, y) = cv2.minMaxLoc(score)
-    return round(float(best), 3), int(x), int(y) + ARENA_TOP
+    return round(float(best), 3), int(x) * 2, int(y) * 2 + ARENA_TOP
 
 
 def deploy_clocks(frame: np.ndarray) -> list[tuple[int, int]]:
