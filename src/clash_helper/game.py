@@ -60,7 +60,7 @@ SPELL_SPAWNS = {"Goblin Barrel": {"Goblins"}, "Graveyard": {"Skeletons"}, "Barba
                 "Royal Delivery": {"Royal Recruits"}, "Skeleton Barrel": {"Skeletons"}}
 SPELL_SPAWN_SECONDS = 4.0
 # signal thresholds from research/spell_signals.py, with the card in their deck and without
-BOLT = (0.4, 0.9)  # share of the top strip a bolt from the sky lights up
+BOLT = (0.4, 0.9)  # share of a thin column of the top strip a bolt from the sky lights up
 BOLT_CARDS = {"Zap", "Electro Wizard"}  # both drop in as a bolt, a unit left under it tells which
 BOLT_Y = 500  # where a bolt's landing is assumed until a unit shows the spot
 ARROWS_RING = (0.25, 0.45)  # strength of the salmon impact ring
@@ -98,7 +98,6 @@ class Track:
     y: int = 0
     first: float = 0.0
     last: float = 0.0
-    born_enemy: bool = False  # side on its first sighting, before votes settle
     sightings: int = 0
     x0: int = 0  # where it was first seen, a spell's direction of travel gives away its side
     y0: int = 0
@@ -412,7 +411,7 @@ class Match:
             if not u.card:
                 continue
             k = self._key(u, at, present)
-            t = self.tracks.setdefault(k, Track(first=at, born_enemy=u.enemy, x0=u.x, y0=u.bottom))
+            t = self.tracks.setdefault(k, Track(first=at, x0=u.x, y0=u.bottom))
             t.side += 1 if u.enemy else -1
             t.sightings += 1
             t.cards[u.card] += u.conf
