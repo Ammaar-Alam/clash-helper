@@ -23,7 +23,7 @@ from clash_helper.decode import NONE, Evidence, best, decode, expected_cost
 from clash_helper.hand import HandReader
 from clash_helper.tracker import UNKNOWN, Opponent
 
-NAME_SECONDS = 1.4  # how long after a deploy timer the units around it vote on the card
+NAME_SECONDS = 1.0  # how long after a deploy timer the units around it vote on the card
 CLOCK_MERGE = 70  # px, one deploy timer seen over several frames
 CLOCK_SECONDS = 2.2  # a timer shows about this long counted from the detector's first sight of it
 MATCH_GONE_SECONDS = 3.0
