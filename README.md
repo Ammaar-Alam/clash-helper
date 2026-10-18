@@ -45,18 +45,18 @@ Open iPhone Mirroring first. The helper snaps it to the right half of the screen
 ## How it works
 
 1. Each frame of the iPhone Mirroring window is cropped to one fixed screen layout.
-2. When a match starts, the opponent's name and clan are read off the screen and their current deck is fetched from the official API.
-3. Enemy cards land with a red stopwatch. The KataCR detector, running on the Mac's GPU in the background, sees every unit and spell on the arena with its side and follows each one across frames, so the units on a fresh stopwatch name the card and enemy spells show up as plays of their own.
-4. Because no card can repeat within 4 plays, the whole sequence of their plays is named at once, so later plays correct earlier mistakes.
-5. The card cycle and elixir model update, and a small set of rules picks the call: defend, punish low elixir, attack while their answer is out of hand, avoid sitting at full elixir, or wait.
+2. The KataCR detector, running on the Mac's GPU in the background, sees every unit, spell, tower and deploy timer on the arena and follows each one across frames.
+3. Enemy cards land with a red stopwatch, and the units that appear on it name the card. Spells are told apart from yours by the way they travel, a Zap and an Electro Wizard by the bolt they drop from the sky, Arrows by the ring they leave.
+4. Their deck comes from the official API when they are in a clan. Most opponents near 4,000 trophies are ladder bots that cannot be looked up, but they play preset decks, so 3 or 4 of their cards give away the other 4.
+5. Because no card can repeat within 4 plays, the whole sequence of their plays is named at once, so later plays correct earlier mistakes. Their elixir is charged the moment a card lands.
+6. A small set of rules picks the call: defend, punish low elixir, attack while their answer is out of hand, avoid sitting at full elixir, or wait.
 
 See [docs/design.md](docs/design.md) for the details.
 
 ## Limits
 
-- Opponents without a clan cannot be looked up, so their deck is learned as they play it.
-- On a hand labeled match, 32 of 33 enemy deploys were caught. 23 of 32 were named right with the opponent's deck known and 20 of 32 while learning it.
-- The detector was trained in 2024, newer cards such as Vines get mistaken for older look-alikes until it is retrained on recent matches.
+- On 13 hand labeled matches, each scored with what was learned from the other 12: 92% of enemy plays caught and 87% named right with their deck known, 91% and 85% the way the helper really runs (deck looked up or guessed). Their elixir is off by 1.3 to 1.8 on average, and a play shows up about 1.7 s after the card leaves their hand.
+- The detector was trained in 2024. It never sees Vines, rarely sees a Rocket in flight, and mixes up some newer evolved skins until it is retrained on recent matches.
 - 1v1 trophy matches only.
 
 ## Development
@@ -65,7 +65,7 @@ See [docs/design.md](docs/design.md) for the details.
 .venv/bin/pytest
 python scripts/build_cards.py        # refresh card costs and art from the API
 python scripts/demo.py match.mp4     # rebuild docs/demo.gif
-python scripts/evaluate.py match1    # score deploy naming against hand labels in captures/
+python research/report.py            # score every hand labeled match in captures/, see docs/design.md
 ```
 
 Unit detection comes from [KataCR](https://github.com/wty-yy/KataCR) (MIT), installed by `clash-helper setup` rather than shipped here.
