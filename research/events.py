@@ -14,7 +14,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from evaluate import CAPTURES, CachedDetector, observations, pair, truth_plays  # noqa: E402
+from evaluate import CAPTURES, CachedDetector, cache, observations, pair, truth_plays  # noqa: E402
+from train import EVENTS  # noqa: E402
 
 import gzip  # noqa: E402
 
@@ -23,7 +24,7 @@ from clash_helper.game import Match  # noqa: E402
 
 def candidates(item: dict) -> list:
     """Every candidate play, with their deck known as in the evaluation."""
-    with gzip.open(CAPTURES / "scans" / f"{item['id']}.json.gz", "rt") as f:
+    with gzip.open(cache("scans") / f"{item['id']}.json.gz", "rt") as f:
         match = Match(detector=CachedDetector(json.load(f)), lookup=False, sync=True)
     events: list = []
     for obs in observations(item, match, False):
@@ -47,14 +48,14 @@ def labeled(item: dict, events: list) -> list[dict]:
 
 def main() -> None:
     items = [i for i in json.loads((CAPTURES / "dataset.json").read_text())
-             if i["labels"] and (CAPTURES / "scans" / f"{i['id']}.json.gz").exists()]
+             if i["labels"] and (cache("scans") / f"{i['id']}.json.gz").exists()]
     rows = []
     for item in items:
         got = labeled(item, candidates(item))
         rows += got
         real = sum(r["truth"] != "none" for r in got)
         print(f"{item['id']:<28} {len(got)} candidates, {real} real plays", flush=True)
-    (CAPTURES / "events.json").write_text(json.dumps(rows, indent=0))
+    EVENTS.write_text(json.dumps(rows, indent=0))
 
 
 if __name__ == "__main__":

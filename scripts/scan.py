@@ -2,6 +2,7 @@
 
     python scripts/scan.py              # every recording in captures/dataset.json not scanned yet
     python scripts/scan.py match4       # one recording
+    CLASH_DETECTOR=ft KATACR_WEIGHTS=a.pt,b.pt python scripts/scan.py   # another detector, into captures/scans_ft
 
 Writes captures/scans/<id>.json.gz with one entry per analysed frame:
 [time, [[name, card, enemy, conf, x, top, bottom, track], ...]] in canonical screen pixels.
@@ -15,6 +16,8 @@ import sys
 import time
 from pathlib import Path
 
+from evaluate import cache
+
 from clash_helper.cli import video_frames
 from clash_helper.kcr import Detector
 
@@ -23,7 +26,7 @@ FPS = 6.0
 
 
 def scan(item: dict, detector: Detector) -> None:
-    out = CAPTURES / "scans" / f"{item['id']}.json.gz"
+    out = cache("scans") / f"{item['id']}.json.gz"
     if out.exists():
         return
     out.parent.mkdir(exist_ok=True)

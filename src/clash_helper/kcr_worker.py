@@ -25,7 +25,10 @@ from katacr.yolov8.combo_detect import ComboDetector  # noqa: E402
 def main() -> None:
     # libraries print banners and warnings, the pipe carries replies only
     sys.stdout = sys.stderr
+    # KATACR_WEIGHTS swaps in another pair of detectors, research/colab_train.py makes fine tuned ones
     weights = [os.path.join(ROOT, "KataCR", "runs", f"detector{i}_v0.7.13.pt") for i in (1, 2)]
+    if os.environ.get("KATACR_WEIGHTS"):
+        weights = os.environ["KATACR_WEIGHTS"].split(",")
     detector = ComboDetector(weights, tracker="bytetrack")
     for model in detector.models:
         model.overrides["device"] = os.environ.get("KATACR_DEVICE", "mps")

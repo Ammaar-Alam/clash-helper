@@ -10,11 +10,15 @@ Writes src/clash_helper/data/confusion.json, learned from every recording, for l
 from __future__ import annotations
 
 import json
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EVENTS = ROOT / "captures/events.json"
+sys.path.insert(0, str(ROOT / "scripts"))
+from evaluate import cache  # noqa: E402
+
+EVENTS = cache("events.json")
 OUT = ROOT / "src/clash_helper/data/confusion.json"
 
 

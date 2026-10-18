@@ -3,6 +3,7 @@
     python research/observe.py            # every recording with a scan
     python research/observe.py match4     # some
     python research/observe.py --marks    # recompute the spell mark signals after their code changed
+    CLASH_DETECTOR=ft python research/observe.py   # another detector: the usual observations with its units
 
 Needs the detector scan from scripts/scan.py. Writes captures/obs/<id>.json.gz, one
 Observation per frame at 6 fps, with tower health read once a second.
@@ -24,6 +25,8 @@ from clash_helper.game import Observation
 from clash_helper.hand import HandReader
 
 CAPTURES = Path(__file__).resolve().parents[1] / "captures"
+sys.path.insert(0, str(CAPTURES.parent / "scripts"))
+from evaluate import VERSION, cache  # noqa: E402
 DATA = Path(__file__).resolve().parents[1] / "src/clash_helper/data/cards.json"
 
 
@@ -90,6 +93,25 @@ def refresh_marks(item: dict) -> None:
     print(f"{item['id']}: marks refreshed", flush=True)
 
 
+def swap_units(item: dict) -> None:
+    """Another detector's observations, the usual ones with that detector's units, so no video is read."""
+    with gzip.open(CAPTURES / "obs" / f"{item['id']}.json.gz", "rt") as f:
+        rows = json.load(f)
+    with gzip.open(cache("scans") / f"{item['id']}.json.gz", "rt") as f:
+        scan = json.load(f)
+    i = 0
+    for r in rows:
+        if r["in_match"]:
+            while i + 1 < len(scan) and scan[i + 1][0] <= r["now"] + 1e-6:
+                i += 1
+            r["units_at"], r["units"] = scan[i][0], scan[i][1]
+    out = cache("obs") / f"{item['id']}.json.gz"
+    out.parent.mkdir(exist_ok=True)
+    with gzip.open(out, "wt") as f:
+        json.dump(rows, f)
+    print(f"{item['id']}: units from {cache('scans').name}", flush=True)
+
+
 def load(path: Path) -> list[Observation]:
     """Cached observations with detector units turned back into kcr.Unit."""
     from clash_helper import kcr
@@ -108,11 +130,14 @@ def load(path: Path) -> list[Observation]:
 
 def main() -> None:
     items = [i for i in json.loads((CAPTURES / "dataset.json").read_text())
-             if (CAPTURES / "scans" / f"{i['id']}.json.gz").exists()]
+             if (cache("scans") / f"{i['id']}.json.gz").exists()]
     ids = [a for a in sys.argv[1:] if not a.startswith("--")]
     for item in items:
         if not ids or item["id"] in ids:
-            refresh_marks(item) if "--marks" in sys.argv else build(item)
+            if VERSION:
+                swap_units(item)
+            else:
+                refresh_marks(item) if "--marks" in sys.argv else build(item)
 
 
 if __name__ == "__main__":

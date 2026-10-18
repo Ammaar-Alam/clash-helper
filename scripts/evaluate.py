@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -23,6 +24,8 @@ from clash_helper.game import Match
 from clash_helper.tracker import UNKNOWN, Opponent
 
 CAPTURES = Path(__file__).resolve().parents[1] / "captures"
+# another detector's scans, observations and events sit beside the usual ones, see research/colab_train.py
+VERSION = os.environ.get("CLASH_DETECTOR", "")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "research"))
 SAME_SECONDS = 1.5
 SAME_PIXELS = 130
@@ -51,6 +54,12 @@ class CachedDetector:
         pass
 
 
+def cache(name: str) -> Path:
+    """captures/<name>, or captures/<name>_<version> when CLASH_DETECTOR names another detector."""
+    path = CAPTURES / name
+    return path.with_name(f"{path.stem}_{VERSION}{path.suffix}") if VERSION else path
+
+
 def truth_plays(labels: dict) -> list[dict]:
     if "plays" in labels:
         return labels["plays"]
@@ -63,7 +72,7 @@ def truth_plays(labels: dict) -> list[dict]:
 
 def observations(item: dict, match: Match, live: bool):
     """Cached observations when research/observe.py made them, else the video frame by frame."""
-    cached = CAPTURES / "obs" / f"{item['id']}.json.gz"
+    cached = cache("obs") / f"{item['id']}.json.gz"
     if not live and cached.exists():
         from observe import load
 
@@ -98,7 +107,7 @@ def pair(truth: list[dict], plays: list[tuple[float, int, int, bool]]) -> list[i
 
 
 def run(item: dict, deck_known: bool, live: bool) -> tuple[list, list, float | None]:
-    scan = CAPTURES / "scans" / f"{item['id']}.json.gz"
+    scan = cache("scans") / f"{item['id']}.json.gz"
     if live or not scan.exists():
         detector = kcr.Detector()
     else:
