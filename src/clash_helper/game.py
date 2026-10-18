@@ -395,12 +395,12 @@ class Match:
     def _see(self, units: list[kcr.Unit], at: float) -> None:
         """Fold one detector result into the tracks, the board, the open deploys and the threat."""
         self.reader.see(units, at)
-        # the detector spots a deploy timer while its red wedge is still too thin for the screen check,
-        # and does not count one on your half, where it now and then takes one of yours for theirs
+        # the detector spots a deploy timer while its red wedge is still too thin for the screen check.
+        # It flips the side of one of your timers for the odd frame, so a timer must lean theirs over its
+        # frames, and one on your half does not count
         for u in units:
             if u.name != "clock":
                 continue
-            # it flips the side of one of your timers for the odd frame, so the timer as a whole must lean theirs
             votes = self.clock_sides[u.track] = self.clock_sides.get(u.track, 0) + (1 if u.enemy else -1)
             y = (u.top + u.bottom) // 2
             if votes > 0 and y <= vision.RIVER_Y + 20:
