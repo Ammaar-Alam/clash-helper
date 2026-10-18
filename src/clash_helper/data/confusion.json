@@ -32,7 +32,7 @@
   "Bowler": 2.0
  },
  "Dark Prince": {
-  "Dark Prince": 2.0
+  "Dark Prince": 1.909
  },
  "Dart Goblin": {
   "Dart Goblin": 11.593,
@@ -67,6 +67,7 @@
   "Zap": 1.0
  },
  "Giant": {
+  "Dark Prince": 0.091,
   "Electro Wizard": 0.327,
   "Giant": 2.0,
   "Mega Knight": 0.6,
@@ -104,13 +105,13 @@
  },
  "Ice Wizard": {
   "Ice Wizard": 3.0,
-  "Skeleton Army": 0.047
+  "Skeleton Army": 0.049
  },
  "Inferno Dragon": {
   "Skeletons": 0.324
  },
  "Inferno Tower": {
-  "Inferno Tower": 3.818
+  "Inferno Tower": 3.808
  },
  "Knight": {
   "Knight": 4.0,
@@ -126,7 +127,7 @@
   "Princess": 0.109
  },
  "Mega Knight": {
-  "Mega Knight": 10.116,
+  "Mega Knight": 10.067,
   "Prince": 0.335,
   "Royal Hogs": 0.065
  },
@@ -138,7 +139,7 @@
  },
  "Mini P.E.K.K.A": {
   "Archers": 0.329,
-  "Inferno Tower": 0.091,
+  "Inferno Tower": 0.1,
   "Wizard": 0.181,
   "none": 1.0
  },
@@ -198,7 +199,7 @@
   "Goblins": 2.0,
   "Hog Rider": 1.117,
   "Minions": 0.355,
-  "Skeleton Army": 6.889,
+  "Skeleton Army": 6.887,
   "Skeleton Barrel": 0.322,
   "Skeletons": 8.061,
   "Witch": 3.111,
@@ -231,11 +232,11 @@
  "Witch": {
   "Goblin Gang": 0.057,
   "Knight": 1.0,
-  "Mega Knight": 2.313,
+  "Mega Knight": 2.362,
   "Minions": 0.219,
   "P.E.K.K.A": 1.0,
   "Witch": 3.652,
-  "none": 1.228
+  "none": 0.228
  },
  "Wizard": {
   "Prince": 0.101,

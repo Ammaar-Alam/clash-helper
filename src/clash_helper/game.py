@@ -219,6 +219,7 @@ class Match:
         self.tracks: dict[int, Track] = {}
         self.alias: dict[int, int] = {}  # track ids the tracker reused or changed -> the track they belong to
         self.next_key = 0  # keys for tracks split off a reused id count down from here
+        self.clock_sides: dict[int, int] = {}  # deploy timer track -> side votes, above zero theirs
         self.last_bolt = -10.0
         self.spells_seen: dict[int, float] = {}
         self.spell_casts: list[tuple[str, float]] = []
@@ -395,10 +396,14 @@ class Match:
         """Fold one detector result into the tracks, the board, the open deploys and the threat."""
         self.reader.see(units, at)
         # the detector spots a deploy timer while its red wedge is still too thin for the screen check,
-        # it now and then takes one of yours for theirs, but those land on your half or in your pocket
+        # and does not count one on your half, where it now and then takes one of yours for theirs
         for u in units:
+            if u.name != "clock":
+                continue
+            # it flips the side of one of your timers for the odd frame, so the timer as a whole must lean theirs
+            votes = self.clock_sides[u.track] = self.clock_sides.get(u.track, 0) + (1 if u.enemy else -1)
             y = (u.top + u.bottom) // 2
-            if u.name == "clock" and u.enemy and y <= vision.RIVER_Y + 20 and not self._my_pocket(u.x, at):
+            if votes > 0 and y <= vision.RIVER_Y + 20:
                 self._timer(u.x, y, at)
 
         current: list[tuple[int, Track]] = []
@@ -529,10 +534,6 @@ class Match:
         """A timer landing right where a new unit stands that was named a moment ago."""
         return next((p for p, e in reversed(self.events) if not e.spell and p.source in ("timer", "bolt")
                      and 0 <= at - p.time <= LATE_UNIT and p.covers(t.x, t.y)), None)
-
-    def _my_pocket(self, x: int, at: float) -> bool:
-        """Whether you may have just deployed there, past the river where you took their tower."""
-        return self.reader.board.their_towers.get(lane(x)) == 0 and at - self.last_drop < 1.5
 
     def _cast_by_me(self, name: str, when: float) -> bool:
         return any(p.card == name and -1.0 <= when - p.time <= 4.0 for p in self.my_plays)
